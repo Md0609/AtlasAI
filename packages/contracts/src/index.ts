@@ -258,6 +258,83 @@ export type DomainEvent =
   | SignalRecomputedEvent;
 
 // ---------------------------------------------------------------------------
+// Investor Profile (Phase 2 "The mirror": FR-2, US-ONB-03/04)
+// ---------------------------------------------------------------------------
+
+export type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced' | 'professional';
+
+/** The four strategy cards (§6.1) plus first-class 'unknown' (FR-2.4). */
+export type Strategy =
+  | 'quality_growth'
+  | 'value'
+  | 'dividend_income'
+  | 'passive_index'
+  | 'unknown';
+
+export type StrategySource = 'stated' | 'inferred' | 'hybrid' | 'unknown';
+
+export type CapitalBand = '<25k' | '25k-100k' | '100k-500k' | '>500k';
+
+/** 1 (sells everything at the first drawdown) … 5 (buys the dip on principle). */
+export type RiskBand = 1 | 2 | 3 | 4 | 5;
+
+export interface ScenarioResponse {
+  scenarioId: string;
+  /** The scenario text as shown, with calibrated amounts baked in (evidence). */
+  prompt: string;
+  answer: string;
+  /** The band this answer maps to; revealed = rounded mean across scenarios. */
+  answerBand: RiskBand;
+}
+
+export interface InvestorProfile {
+  version: number;
+  experienceLevel: ExperienceLevel | null;
+  horizonYears: number | null;
+  capitalBand: CapitalBand | null;
+  monthlyContribution: DecimalString | null;
+  contributionCurrency: Currency | null;
+  decumulation: boolean;
+  statedStrategy: Strategy | null;
+  inferredStrategy: Strategy | null;
+  strategySource: StrategySource;
+  strategyConfidence: DecimalString | null;
+  riskStated: RiskBand | null;
+  riskRevealed: RiskBand | null;
+  /** True when |stated − revealed| > 2 bands (US-ONB-04). */
+  riskDivergenceFlag: boolean;
+  scenarioResponses: ScenarioResponse[];
+  changeReason: string;
+  changedBy: 'user' | 'atlas_inference' | 'review';
+  validFrom: string;
+}
+
+/** A risk scenario calibrated to the user's actual money (US-ONB-04). */
+export interface RiskScenario {
+  scenarioId: string;
+  prompt: string;
+  options: Array<{ key: string; label: string; band: RiskBand }>;
+}
+
+// ---------------------------------------------------------------------------
+// Strategy inference (F-04) — deterministic hypothesis, presented as such
+// ---------------------------------------------------------------------------
+
+export interface StrategyEvidence {
+  observation: string; // e.g. "68% of the portfolio is in index funds"
+  metric: string; // stable id, e.g. 'fund_weight'
+  value: DecimalString;
+}
+
+export interface StrategyInference {
+  hypothesis: Strategy;
+  /** 0..1; scales with how much of the portfolio the evidence covers. */
+  confidence: DecimalString;
+  evidence: StrategyEvidence[];
+  gaps: Array<{ component: string; reason: string }>;
+}
+
+// ---------------------------------------------------------------------------
 // Data quality (Design §B1 Phase 1: quality checks + ops dashboard v0)
 // ---------------------------------------------------------------------------
 
