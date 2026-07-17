@@ -1,0 +1,55 @@
+{
+  "description": "Golden portfolio 1 — hand-computed by a human, 2026-07-17. Base EUR. FX: 1 EUR = 1.25 USD (so 1 USD = 0.80 EUR). Positions: 10 AAA @ 100 USD = 1000 USD = 800 EUR; 20 BBB @ 60 EUR = 1200 EUR; 10 FND @ 100 EUR = 1000 EUR; cash 1000 EUR. Total = 4000 EUR. FND holdings: AAA 50%, BBB 30%, unknown 20%. Hand-computed: weights AAA 0.2, BBB 0.3, FND 0.25, cash 0.25. Look-through: AAA 0.2 + 0.25*0.5 = 0.325; BBB 0.3 + 0.25*0.3 = 0.375; unknown 0.25*0.2 = 0.05. Sector: IT 0.325, Industrials 0.375, UNKNOWN 0.05, CASH 0.25. Country: US 0.325, DE 0.375, UNKNOWN 0.05, CASH 0.25. Currency (direct): USD 0.2, EUR 0.8. Concentration over known names renormalized: AAA 13/28, BBB 15/28; HHI = (169+225)/784 = 394/784 = 0.502551020408...; effective-N = 784/394 = 1.989847715736...; nominal N = 2; top name BBB at portfolio weight 0.375.",
+  "inputs": {
+    "portfolioId": "golden-1",
+    "baseCurrency": "EUR",
+    "positions": [
+      { "securityId": "AAA", "quantity": "10" },
+      { "securityId": "BBB", "quantity": "20" },
+      { "securityId": "FND", "quantity": "10" }
+    ],
+    "securities": [
+      { "id": "AAA", "name": "Alpha Corp", "type": "equity", "isFund": false, "gicsSector": "Information Technology", "gicsIndustry": "Software", "country": "US", "currency": "USD" },
+      { "id": "BBB", "name": "Beta AG", "type": "equity", "isFund": false, "gicsSector": "Industrials", "gicsIndustry": "Machinery", "country": "DE", "currency": "EUR" },
+      { "id": "FND", "name": "Fund One", "type": "etf", "isFund": true, "gicsSector": null, "gicsIndustry": null, "country": "IE", "currency": "EUR" }
+    ],
+    "prices": [
+      { "securityId": "AAA", "close": "100", "currency": "USD", "asOf": "2026-06-30" },
+      { "securityId": "BBB", "close": "60", "currency": "EUR", "asOf": "2026-06-30" },
+      { "securityId": "FND", "close": "100", "currency": "EUR", "asOf": "2026-06-30" }
+    ],
+    "fx": [
+      { "base": "EUR", "quote": "USD", "rate": "1.25", "asOf": "2026-06-30" }
+    ],
+    "fundHoldings": [
+      { "fundSecurityId": "FND", "holdingSecurityId": "AAA", "weight": "0.5", "asOf": "2026-06-30" },
+      { "fundSecurityId": "FND", "holdingSecurityId": "BBB", "weight": "0.3", "asOf": "2026-06-30" }
+    ],
+    "cash": [ { "currency": "EUR", "amount": "1000" } ]
+  },
+  "expected": {
+    "totalValueBase": "4000",
+    "weights": {
+      "AAA": "0.2",
+      "BBB": "0.3",
+      "FND": "0.25",
+      "cash": "0.25"
+    },
+    "lookThrough": {
+      "AAA": { "weight": "0.325", "viaDirect": "0.2", "viaFunds": "0.125" },
+      "BBB": { "weight": "0.375", "viaDirect": "0.3", "viaFunds": "0.075" },
+      "unknown": "0.05"
+    },
+    "exposure": {
+      "sector": { "Information Technology": "0.325", "Industrials": "0.375", "UNKNOWN": "0.05", "CASH": "0.25" },
+      "country": { "US": "0.325", "DE": "0.375", "UNKNOWN": "0.05", "CASH": "0.25" },
+      "currency": { "USD": "0.2", "EUR": "0.8" }
+    },
+    "concentration": {
+      "hhi12dp": "0.502551020408",
+      "effectiveN12dp": "1.989847715736",
+      "nominalN": 2,
+      "top1": { "securityId": "BBB", "weight": "0.375" }
+    }
+  }
+}

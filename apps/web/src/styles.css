@@ -1,0 +1,67 @@
+:root {
+  --bg: #f6f5f2;
+  --ink: #1c1c1c;
+  --muted: #6b6b6b;
+  --card: #ffffff;
+  --line: #e3e1db;
+  --accent: #16493c;
+  --warn-bg: #fff6e5;
+  --warn-ink: #7a5300;
+  --err: #a3352b;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: 'Iowan Old Style', 'Palatino', Georgia, serif;
+  background: var(--bg);
+  color: var(--ink);
+}
+.shell { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
+.shell.narrow { max-width: 420px; }
+header { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+h1 { font-weight: 600; letter-spacing: 0.01em; }
+.muted { color: var(--muted); }
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 20px;
+  margin: 12px 0;
+}
+.card label { display: block; margin: 10px 0; }
+.card input, .card select, .card textarea {
+  display: block; width: 100%; margin-top: 4px; padding: 8px;
+  border: 1px solid var(--line); border-radius: 6px; font: inherit;
+}
+button {
+  font: inherit; padding: 8px 16px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--accent); background: var(--accent); color: #fff;
+  margin-top: 8px;
+}
+button.link {
+  background: none; border: none; color: var(--accent);
+  text-decoration: underline; padding: 4px; margin: 0;
+}
+button.row {
+  background: none; border: none; color: inherit; text-align: left;
+  width: 100%; padding: 8px 4px; border-bottom: 1px solid var(--line);
+}
+button.tab {
+  background: none; color: var(--ink); border: 1px solid var(--line); margin-right: 6px;
+}
+button.tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.tabs { margin: 12px 0; }
+.inline { display: flex; gap: 8px; align-items: flex-end; }
+.inline input { width: auto; }
+ul.plain { list-style: none; padding: 0; margin: 8px 0; }
+table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+tr.unknown td { background: var(--warn-bg); color: var(--warn-ink); }
+.error { color: var(--err); margin: 8px 0; }
+.gaps { background: var(--warn-bg); color: var(--warn-ink); padding: 8px 12px; border-radius: 6px; margin: 8px 0; }
+.provenance {
+  color: var(--muted); font-size: 0.82em; border-top: 1px dashed var(--line);
+  padding-top: 8px; margin-top: 16px;
+}
+.mapping { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+textarea { font-family: ui-monospace, monospace; font-size: 0.9em; }

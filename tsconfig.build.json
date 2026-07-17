@@ -1,0 +1,12 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/contracts" },
+    { "path": "packages/domain" },
+    { "path": "packages/schema" },
+    { "path": "services/ingest" },
+    { "path": "services/signal-engine" },
+    { "path": "apps/api" },
+    { "path": "ops" }
+  ]
+}

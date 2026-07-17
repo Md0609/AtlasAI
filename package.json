@@ -1,0 +1,29 @@
+{
+  "name": "atlas",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "packages/contracts",
+    "packages/domain",
+    "packages/schema",
+    "services/ingest",
+    "services/signal-engine",
+    "apps/api",
+    "apps/web",
+    "ops"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json && npm run build -w apps/web",
+    "test": "vitest run",
+    "migrate": "node packages/schema/dist/cli.js up",
+    "ingest": "node services/ingest/dist/cli.js run",
+    "api": "node apps/api/dist/index.js",
+    "quality-report": "node ops/dist/quality-report.js"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "vitest": "^2.1.9",
+    "@types/node": "^22.10.0"
+  }
+}

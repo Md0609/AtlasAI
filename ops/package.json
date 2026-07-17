@@ -1,0 +1,7 @@
+{
+  "name": "@atlas/ops",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/quality-report.js",
+  "dependencies": { "@atlas/contracts": "0.1.0" }
+}

@@ -1,0 +1,193 @@
+/**
+ * Auth (Phase-0 scaffolding carried by Phase 1): email+password with Argon2id
+ * (FR-1.1), opaque session token (sha256 at rest), jurisdiction captured and
+ * gated at registration (FR-1.3 / FR-1.4 — before any analytical feature).
+ *
+ * Deliberately deferred pending Phase-0 completion: OAuth, TOTP, managed
+ * identity provider (D-015). Documented in docs/adr/ADR-000.
+ */
+import { createHash, randomBytes } from 'node:crypto';
+import argon2 from 'argon2';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type pg from 'pg';
+import { z } from 'zod';
+import { problem } from './http.js';
+
+const SESSION_COOKIE = 'atlas_session';
+const SESSION_TTL_DAYS = 7;
+
+export interface AuthedUser {
+  id: string;
+  email: string;
+  jurisdiction: string;
+  baseCurrency: string;
+}
+
+declare module 'fastify' {
+  interface FastifyRequest {
+    traceId: string;
+    user: AuthedUser | null;
+  }
+}
+
+const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
+
+export async function audit(
+  db: pg.Pool | pg.PoolClient,
+  actorUserId: string | null,
+  action: string,
+  entityType: string,
+  entityId: string | null,
+  traceId: string,
+  payload: Record<string, unknown> = {},
+): Promise<void> {
+  await db.query(
+    `INSERT INTO audit_log (actor_user_id, action, entity_type, entity_id, trace_id, payload)
+     VALUES ($1,$2,$3,$4,$5,$6)`,
+    [actorUserId, action, entityType, entityId, traceId, JSON.stringify(payload)],
+  );
+}
+
+export async function loadUser(pool: pg.Pool, req: FastifyRequest): Promise<AuthedUser | null> {
+  const token = req.cookies?.[SESSION_COOKIE];
+  if (!token) return null;
+  const { rows } = await pool.query(
+    `SELECT u.id, u.email, u.jurisdiction_code, u.base_currency
+       FROM sessions s JOIN users u ON u.id = s.user_id
+      WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > now()
+        AND u.deleted_at IS NULL`,
+    [sha256(token)],
+  );
+  if (rows.length === 0) return null;
+  return {
+    id: rows[0].id,
+    email: rows[0].email,
+    jurisdiction: rows[0].jurisdiction_code,
+    baseCurrency: rows[0].base_currency,
+  };
+}
+
+export function requireUser(req: FastifyRequest, reply: FastifyReply): AuthedUser | null {
+  if (!req.user) {
+    problem(reply, req, 401, 'unauthenticated', 'Authentication required');
+    return null;
+  }
+  return req.user;
+}
+
+const registerSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(10, 'password must be at least 10 characters'),
+  jurisdiction: z.string().length(2),
+  base_currency: z.string().length(3),
+});
+
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string(),
+});
+
+export function registerAuthRoutes(app: FastifyInstance, pool: pg.Pool): void {
+  app.post('/v1/auth/register', async (req, reply) => {
+    const parsed = registerSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return problem(reply, req, 400, 'validation', 'Invalid registration payload', parsed.error.issues[0]?.message);
+    }
+    const { email, password, jurisdiction, base_currency } = parsed.data;
+
+    // FR-1.3 / FR-1.4: jurisdiction is captured here, before anything else
+    // exists for this user, and gated against the versioned policy table.
+    const j = await pool.query('SELECT allowed FROM jurisdictions WHERE code = $1', [
+      jurisdiction.toUpperCase(),
+    ]);
+    if (j.rows.length === 0 || !j.rows[0].allowed) {
+      return problem(
+        reply,
+        req,
+        403,
+        'jurisdiction-not-supported',
+        'Atlas is not available in this jurisdiction yet',
+        `Jurisdiction ${jurisdiction.toUpperCase()} is not enabled in the current policy table.`,
+      );
+    }
+
+    const hash = await argon2.hash(password, { type: argon2.argon2id });
+    try {
+      const { rows } = await pool.query(
+        `INSERT INTO users (email, password_hash, jurisdiction_code, base_currency)
+         VALUES ($1,$2,$3,$4) RETURNING id`,
+        [email, hash, jurisdiction.toUpperCase(), base_currency.toUpperCase()],
+      );
+      const userId = rows[0].id as string;
+      await audit(pool, userId, 'user.register', 'user', userId, req.traceId, {
+        jurisdiction: jurisdiction.toUpperCase(),
+      });
+      const token = await createSession(pool, userId);
+      setSessionCookie(reply, token);
+      return reply.status(201).send({ id: userId, email });
+    } catch (err) {
+      if ((err as { code?: string }).code === '23505') {
+        return problem(reply, req, 409, 'email-taken', 'An account with this email already exists');
+      }
+      throw err;
+    }
+  });
+
+  app.post('/v1/auth/login', async (req, reply) => {
+    const parsed = loginSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return problem(reply, req, 400, 'validation', 'Invalid login payload');
+    }
+    const { rows } = await pool.query(
+      'SELECT id, password_hash FROM users WHERE email = $1 AND deleted_at IS NULL',
+      [parsed.data.email],
+    );
+    const invalid = () => problem(reply, req, 401, 'invalid-credentials', 'Invalid email or password');
+    if (rows.length === 0) return invalid();
+    const ok = await argon2.verify(rows[0].password_hash, parsed.data.password);
+    if (!ok) return invalid();
+    const token = await createSession(pool, rows[0].id);
+    setSessionCookie(reply, token);
+    await audit(pool, rows[0].id, 'user.login', 'user', rows[0].id, req.traceId);
+    return reply.send({ id: rows[0].id });
+  });
+
+  app.post('/v1/auth/logout', async (req, reply) => {
+    const token = req.cookies?.[SESSION_COOKIE];
+    if (token) {
+      await pool.query('UPDATE sessions SET revoked_at = now() WHERE token_hash = $1', [sha256(token)]);
+    }
+    reply.clearCookie(SESSION_COOKIE, { path: '/' });
+    return reply.send({ ok: true });
+  });
+
+  app.get('/v1/me', async (req, reply) => {
+    const user = requireUser(req, reply);
+    if (!user) return;
+    return reply.send({
+      id: user.id,
+      email: user.email,
+      jurisdiction: user.jurisdiction,
+      base_currency: user.baseCurrency,
+    });
+  });
+}
+
+async function createSession(pool: pg.Pool, userId: string): Promise<string> {
+  const token = randomBytes(32).toString('hex');
+  await pool.query(
+    `INSERT INTO sessions (user_id, token_hash, expires_at)
+     VALUES ($1,$2, now() + ($3 || ' days')::interval)`,
+    [userId, sha256(token), String(SESSION_TTL_DAYS)],
+  );
+  return token;
+}
+
+function setSessionCookie(reply: FastifyReply, token: string): void {
+  reply.setCookie(SESSION_COOKIE, token, {
+    path: '/',
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: SESSION_TTL_DAYS * 86_400,
+  });
+}
