@@ -217,6 +217,69 @@ export interface PerformanceResult {
 }
 
 // ---------------------------------------------------------------------------
+// Correlation clusters (US-PF-03, §14.3 D8) — Phase 2, computed on available
+// history with an explicit warning when the window is short.
+// ---------------------------------------------------------------------------
+
+export interface CorrelationPair {
+  a: string; // securityId
+  b: string;
+  correlation: DecimalString;
+  observations: number;
+}
+
+export interface CorrelationCluster {
+  members: Array<{ securityId: string; label: string; weight: DecimalString }>;
+  /** Σ direct weights of the members, as a fraction of total portfolio. */
+  weight: DecimalString;
+  /** Minimum pairwise correlation inside the cluster. */
+  minPairCorrelation: DecimalString;
+}
+
+export interface CorrelationResult {
+  pairs: CorrelationPair[];
+  clusters: CorrelationCluster[];
+  /** Days of history actually used; <365 carries a mandatory warning. */
+  windowDays: number;
+  warnings: string[];
+  gaps: Array<{ component: string; reason: string; securityId?: string }>;
+}
+
+// ---------------------------------------------------------------------------
+// Portfolio Reality Check (F-09, §14.3) — Surprise Detector, template-
+// narrated v0 (Design §B1 Phase 2; LLM narration arrives Phase 4b).
+// ---------------------------------------------------------------------------
+
+export type SurpriseKind =
+  | 'lookthrough_gap' // D1: hidden exposure arriving through funds
+  | 'effective_n' // D2: nominal diversification vs effective
+  | 'single_name_concentration' // D4
+  | 'foreign_currency' // D5
+  | 'strategy_mismatch' // D6: stated vs inferred strategy
+  | 'correlation_cluster'; // D8
+
+export interface Surprise {
+  kind: SurpriseKind;
+  headline: string;
+  body: string;
+  /** Raw magnitude of the finding, before the unawareness prior. */
+  magnitude: DecimalString;
+  /** magnitude × unawareness prior — the ranking key (§14.3). */
+  score: DecimalString;
+  /** The numbers narrated, machine-readable (every numeral is computed). */
+  values: Record<string, DecimalString | string | number>;
+}
+
+export interface RealityCheckResult {
+  /** Top 3 by score (§14.3: "Top 3 only" — the rest are one click away). */
+  top: Surprise[];
+  /** Remaining detected surprises, headline only. */
+  others: Array<{ kind: SurpriseKind; headline: string }>;
+  warnings: string[];
+  gaps: Array<{ component: string; reason: string }>;
+}
+
+// ---------------------------------------------------------------------------
 // Typed domain events (PRD §24.2) — Phase 1 emits External + one Derived
 // ---------------------------------------------------------------------------
 

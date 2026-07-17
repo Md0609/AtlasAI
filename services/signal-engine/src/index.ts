@@ -7,4 +7,6 @@ export * from './concentration.js';
 export * from './performance.js';
 export * from './strategy.js';
 export * from './rules.js';
+export * from './correlation.js';
+export * from './surprise.js';
 export * from './engine.js';
