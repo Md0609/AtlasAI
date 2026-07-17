@@ -197,6 +197,36 @@ describe('transactions are the source of truth (§27.3.4)', () => {
   });
 });
 
+describe('transaction sign conventions (behavior-gap integrity)', () => {
+  it('rejects a withdrawal with a positive amount instead of silently inflating cash', async () => {
+    const res = await inject({
+      method: 'POST',
+      url: `/v1/portfolios/${portfolioId}/transactions`,
+      payload: { type: 'withdrawal', trade_date: '2026-03-02', amount: '5000', currency: 'EUR' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().title).toContain('negative');
+  });
+
+  it('rejects a deposit with a negative amount', async () => {
+    const res = await inject({
+      method: 'POST',
+      url: `/v1/portfolios/${portfolioId}/transactions`,
+      payload: { type: 'deposit', trade_date: '2026-03-02', amount: '-5000', currency: 'EUR' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('accepts a correctly signed withdrawal', async () => {
+    const res = await inject({
+      method: 'POST',
+      url: `/v1/portfolios/${portfolioId}/transactions`,
+      payload: { type: 'withdrawal', trade_date: '2026-03-02', amount: '-5000', currency: 'EUR' },
+    });
+    expect(res.statusCode).toBe(201);
+  });
+});
+
 describe('exposure endpoint (Signal Engine over real data)', () => {
   it('returns weights summing to 1, an explicit unknown slice, provenance and staleness', async () => {
     const res = await inject({

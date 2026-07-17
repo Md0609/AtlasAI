@@ -19,6 +19,7 @@ import { audit, requireUser } from './auth.js';
 import { parseCsv, problem } from './http.js';
 
 const MAX_PORTFOLIOS = 3;
+const MAX_IMPORT_ROWS = 5000;
 
 const portfolioSchema = z.object({
   name: z.string().min(1).max(120),
@@ -102,7 +103,10 @@ export async function recomputeDerivedState(client: pg.PoolClient, portfolioId: 
     [portfolioId],
   );
 
-  const pos = new Map<string, { qty: ReturnType<typeof dec>; cost: ReturnType<typeof dec>; ccy: string }>();
+  const pos = new Map<
+    string,
+    { qty: ReturnType<typeof dec>; cost: ReturnType<typeof dec>; ccy: string; mixedCcy: boolean }
+  >();
   const cash = new Map<string, ReturnType<typeof dec>>();
   const bumpCash = (ccy: string, amt: ReturnType<typeof dec>) =>
     cash.set(ccy, (cash.get(ccy) ?? dec(0)).plus(amt));
@@ -111,8 +115,12 @@ export async function recomputeDerivedState(client: pg.PoolClient, portfolioId: 
     const amount = dec(t.amount);
     bumpCash(t.currency, amount);
     if (!t.security_id) continue;
-    const p = pos.get(t.security_id) ?? { qty: dec(0), cost: dec(0), ccy: t.currency };
+    const p = pos.get(t.security_id) ?? { qty: dec(0), cost: dec(0), ccy: t.currency, mixedCcy: false };
     if (t.tx_type === 'buy') {
+      // Buys in different currencies for one security cannot be averaged
+      // without an FX conversion we don't have here; a wrong avg_cost is
+      // worse than none, so the whole cost basis becomes a declared gap.
+      if (t.currency !== p.ccy) p.mixedCcy = true;
       const q = dec(t.quantity ?? 0);
       p.qty = p.qty.plus(q);
       p.cost = p.cost.plus(q.times(t.price ?? 0)).plus(t.fee ?? 0);
@@ -131,7 +139,7 @@ export async function recomputeDerivedState(client: pg.PoolClient, portfolioId: 
   await client.query('DELETE FROM positions WHERE portfolio_id = $1', [portfolioId]);
   for (const [securityId, p] of pos) {
     if (p.qty.isZero()) continue;
-    const avg = p.qty.gt(0) && p.cost.gt(0) ? p.cost.div(p.qty) : null;
+    const avg = !p.mixedCcy && p.qty.gt(0) && p.cost.gt(0) ? p.cost.div(p.qty) : null;
     await client.query(
       `INSERT INTO positions (portfolio_id, security_id, quantity, avg_cost, cost_currency, updated_at)
        VALUES ($1,$2,$3,$4,$5, now())`,
@@ -149,8 +157,44 @@ export async function recomputeDerivedState(client: pg.PoolClient, portfolioId: 
   }
 }
 
+/**
+ * Sign conventions per transaction type. Getting these wrong silently corrupts
+ * cash balances AND the TWR/MWR flows — the behavior-gap number (US-PF-06)
+ * would be confidently wrong, which is the one failure mode we cannot have.
+ * A withdrawal is cash out (≤0); a deposit is cash in (≥0); fees are ≤0.
+ */
+const AMOUNT_SIGN: Partial<Record<z.infer<typeof transactionSchema>['type'], 'positive' | 'negative'>> = {
+  deposit: 'positive',
+  dividend: 'positive',
+  sell: 'positive',
+  withdrawal: 'negative',
+  fee: 'negative',
+  buy: 'negative',
+};
+
+function assertAmountSign(type: z.infer<typeof transactionSchema>['type'], amount: string): void {
+  const expected = AMOUNT_SIGN[type];
+  if (!expected) return;
+  const a = dec(amount);
+  if (expected === 'positive' && a.isNegative()) {
+    throw Object.assign(
+      new Error(`${type} amount must be positive (cash in); got ${amount}`),
+      { statusCode: 400 },
+    );
+  }
+  if (expected === 'negative' && a.gt(0)) {
+    throw Object.assign(
+      new Error(`${type} amount must be negative (cash out); got ${amount}`),
+      { statusCode: 400 },
+    );
+  }
+}
+
 function txAmount(input: z.infer<typeof transactionSchema>): string | null {
-  if (input.amount !== undefined) return input.amount;
+  if (input.amount !== undefined) {
+    assertAmountSign(input.type, input.amount);
+    return input.amount;
+  }
   const fee = dec(input.fee ?? 0);
   if (input.type === 'buy' && input.quantity && input.price) {
     return str(dec(input.quantity).times(input.price).plus(fee).negated());
@@ -403,6 +447,16 @@ export function registerPortfolioRoutes(app: FastifyInstance, pool: pg.Pool): vo
     const rows = parseCsv(csv);
     if (rows.length < 2) {
       return problem(reply, req, 400, 'validation', 'CSV needs a header row and at least one data row');
+    }
+    if (rows.length > MAX_IMPORT_ROWS + 1) {
+      return problem(
+        reply,
+        req,
+        400,
+        'validation',
+        `CSV import is capped at ${MAX_IMPORT_ROWS} rows per request`,
+        'Split the file and import in batches.',
+      );
     }
     const header = rows[0]!.map((h) => h.trim());
     const col = (name?: string) => (name ? header.indexOf(name) : -1);
