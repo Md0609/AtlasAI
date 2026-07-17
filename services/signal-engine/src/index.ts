@@ -6,4 +6,5 @@ export * from './exposure.js';
 export * from './concentration.js';
 export * from './performance.js';
 export * from './strategy.js';
+export * from './rules.js';
 export * from './engine.js';

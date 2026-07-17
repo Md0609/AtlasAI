@@ -17,6 +17,7 @@ import { z } from 'zod';
 import { dec, str } from '@atlas/domain';
 import { audit, requireUser } from './auth.js';
 import { parseCsv, problem } from './http.js';
+import { evaluateAndPersistUserRules } from './rules.js';
 
 const MAX_PORTFOLIOS = 3;
 const MAX_IMPORT_ROWS = 5000;
@@ -366,6 +367,8 @@ export function registerPortfolioRoutes(app: FastifyInstance, pool: pg.Pool): vo
         price: parsed.data.price,
         currency: parsed.data.currency,
       });
+      // §27.4: rule evaluation ↔ portfolio change is strong consistency.
+      await evaluateAndPersistUserRules(client, user.id, user.baseCurrency);
       await audit(client, user.id, 'position.manual_entry', 'transaction', txId, req.traceId, parsed.data);
       await client.query('COMMIT');
       return reply.status(201).send({ transaction_id: txId });
@@ -412,6 +415,8 @@ export function registerPortfolioRoutes(app: FastifyInstance, pool: pg.Pool): vo
     try {
       await client.query('BEGIN');
       const txId = await insertTransaction(client, id, parsed.data);
+      // §27.4: rule evaluation ↔ portfolio change is strong consistency.
+      await evaluateAndPersistUserRules(client, user.id, user.baseCurrency);
       await audit(client, user.id, 'transaction.create', 'transaction', txId, req.traceId, {
         type: parsed.data.type,
         trade_date: parsed.data.trade_date,
@@ -544,6 +549,8 @@ export function registerPortfolioRoutes(app: FastifyInstance, pool: pg.Pool): vo
         });
         imported += 1;
       }
+      // One evaluation for the whole import, same transaction (§27.4).
+      if (imported > 0) await evaluateAndPersistUserRules(client, user.id, user.baseCurrency);
       await audit(client, user.id, 'portfolio.import_csv', 'portfolio', id, req.traceId, {
         imported,
         skipped: skipped.length,

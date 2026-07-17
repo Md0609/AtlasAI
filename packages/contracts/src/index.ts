@@ -317,6 +317,50 @@ export interface RiskScenario {
 }
 
 // ---------------------------------------------------------------------------
+// Rules engine (F-05, US-ONB-05, §14.6) — every type deterministically
+// evaluable by the Signal Engine; no rule type ships that isn't.
+// ---------------------------------------------------------------------------
+
+export type RuleType =
+  | 'max_single_name'
+  | 'max_sector'
+  | 'min_cash'
+  | 'max_cash'
+  | 'no_buy_list'
+  | 'max_positions'
+  | 'min_holding_period';
+
+/** Shape of `params` per rule type (stored as JSONB, validated at the API). */
+export interface RuleParams {
+  /** Fractional limit for weight-based rules, e.g. "0.15". */
+  limit?: DecimalString;
+  /** GICS sector for max_sector. */
+  sector?: string;
+  /** Security ids for no_buy_list. */
+  securityIds?: string[];
+  /** Human label for no_buy_list ("no tobacco, no defence"). */
+  label?: string;
+  /** Count for max_positions. */
+  count?: number;
+  /** Months for min_holding_period. */
+  months?: number;
+}
+
+export type RuleEvaluationStatus = 'ok' | 'breach' | 'not_evaluable';
+
+export interface RuleEvaluationResult {
+  ruleId: string;
+  status: RuleEvaluationStatus;
+  observed: {
+    /** Observed value in the rule's own unit (weight fraction, count, months). */
+    value: DecimalString | null;
+    limit: DecimalString | null;
+    /** Specific offenders, e.g. the name over the limit or the early sell. */
+    detail: string | null;
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Strategy inference (F-04) — deterministic hypothesis, presented as such
 // ---------------------------------------------------------------------------
 

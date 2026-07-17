@@ -29,8 +29,11 @@ import { ownedPortfolio } from './portfolios.js';
 // Input loading
 // ---------------------------------------------------------------------------
 
+/** Anything with .query — a Pool, or a PoolClient inside a transaction (§27.4). */
+export type Db = pg.Pool | pg.PoolClient;
+
 export async function loadEngineInputs(
-  pool: pg.Pool,
+  pool: Db,
   portfolio: { id: string; base_currency: string },
 ): Promise<EngineInputs> {
   const { rows: posRows } = await pool.query(
@@ -38,6 +41,48 @@ export async function loadEngineInputs(
     [portfolio.id],
   );
 
+  const { rows: cashRows } = await pool.query(
+    `SELECT currency, amount::text FROM cash_balances WHERE portfolio_id = $1`,
+    [portfolio.id],
+  );
+
+  return enrichInputs(pool, portfolio.id, portfolio.base_currency, posRows, cashRows);
+}
+
+/**
+ * Consolidated view across all of a user's live portfolios (§14.2: the
+ * consolidated view is the default; rules are declared by the USER and
+ * evaluated against everything they own).
+ */
+export async function loadConsolidatedInputs(
+  db: Db,
+  userId: string,
+  baseCurrency: string,
+): Promise<EngineInputs> {
+  const { rows: posRows } = await db.query(
+    `SELECT pos.security_id, sum(pos.quantity)::text AS quantity
+       FROM positions pos JOIN portfolios p ON p.id = pos.portfolio_id
+      WHERE p.user_id = $1 AND p.deleted_at IS NULL
+      GROUP BY pos.security_id`,
+    [userId],
+  );
+  const { rows: cashRows } = await db.query(
+    `SELECT cb.currency, sum(cb.amount)::text AS amount
+       FROM cash_balances cb JOIN portfolios p ON p.id = cb.portfolio_id
+      WHERE p.user_id = $1 AND p.deleted_at IS NULL
+      GROUP BY cb.currency`,
+    [userId],
+  );
+  return enrichInputs(db, `consolidated-${userId}`, baseCurrency, posRows, cashRows);
+}
+
+async function enrichInputs(
+  pool: Db,
+  portfolioId: string,
+  baseCurrency: string,
+  posRows: Array<{ security_id: string; quantity: string }>,
+  cashRows: Array<{ currency: string; amount: string }>,
+): Promise<EngineInputs> {
   // Closure over fund holdings so recursive look-through has full metadata.
   const ids = new Set<string>(posRows.map((r) => r.security_id as string));
   const holdings: EngineInputs['fundHoldings'] = [];
@@ -91,14 +136,9 @@ export async function loadEngineInputs(
        FROM fx_rates ORDER BY base_currency, quote_currency, rate_date DESC`,
   );
 
-  const { rows: cashRows } = await pool.query(
-    `SELECT currency, amount::text FROM cash_balances WHERE portfolio_id = $1`,
-    [portfolio.id],
-  );
-
   return {
-    portfolioId: portfolio.id,
-    baseCurrency: portfolio.base_currency,
+    portfolioId,
+    baseCurrency,
     positions: posRows.map((r) => ({ securityId: r.security_id, quantity: r.quantity })),
     securities: secRows.map((r) => ({
       id: r.id,
