@@ -217,6 +217,91 @@ export interface PerformanceResult {
 }
 
 // ---------------------------------------------------------------------------
+// Contextualization (Phase 4a, §A4.1) — the structural provenance guarantee.
+//
+// The PSA does not emit free prose. It emits this document: typed sections
+// where every numeral is a REFERENCE to a signal value, and the renderer
+// refuses a literal numeral outside a quoted user span. Escapes then require
+// a failure in the deterministic layers — testable to actual zero — and
+// US-AI-02's 100% provenance is free: unprovenanced numbers are
+// unrepresentable.
+// ---------------------------------------------------------------------------
+
+export type ContextSectionType = 'fact' | 'tension' | 'nuance' | 'countercase' | 'unknown';
+
+/** §17.3 closed tension taxonomy. */
+export type TensionType = 'T1' | 'T2' | 'T3' | 'T4' | 'T5' | 'T6' | 'T7';
+
+/** Where a verbatim user quote comes from — always the user's own rows (§28.2). */
+export interface UserQuoteSource {
+  table: 'theses' | 'thesis_conditions' | 'rules' | 'decisions' | 'profile_versions';
+  id: string;
+  column: string;
+}
+
+export type ContextSpan =
+  /** Prose. MUST contain no numerals — the guard hard-fails otherwise. */
+  | { kind: 'text'; text: string }
+  /** A number, by reference. Formatting is rendering, not generation. */
+  | { kind: 'signal'; signalId: string; format?: 'number' | 'percent' | 'currency'; dp?: number }
+  /** The user's own words, verbatim; verified against the stored row. */
+  | { kind: 'user_quote'; text: string; source: UserQuoteSource };
+
+export interface ContextSection {
+  type: ContextSectionType;
+  spans: ContextSpan[];
+  /** Required for tension sections. T1/T2 must anchor to the user's own row
+   *  (§28.2: "a tension is a typed edge to something the user wrote"). */
+  tensionType?: TensionType;
+  anchor?: { table: UserQuoteSource['table']; id: string };
+}
+
+export interface ContextSignalValue {
+  value: DecimalString;
+  /** Required when format 'currency' renders this signal (§27.3.3). */
+  currency?: Currency;
+  provenance: Provenance;
+}
+
+/** §17.4: a confidence statement without falsifiers is a vibe. */
+export interface ContextConfidence {
+  level: 'high' | 'medium' | 'low' | 'insufficient';
+  basis: ContextSpan[];
+  whatWouldChangeIt: string[]; // required, non-empty, rendered
+}
+
+export interface ContextualizationDoc {
+  userId: string; // Layer 2 is personal by definition (§21.2)
+  subject: { scope: 'security' | 'portfolio'; securityId?: string };
+  sections: ContextSection[];
+  confidence: ContextConfidence;
+  /** The signal bundle: every value a span may reference, with provenance. */
+  signals: Record<string, ContextSignalValue>;
+  generator: { agent: string; promptVersion: string; model: string };
+}
+
+// ---------------------------------------------------------------------------
+// Compliance Guard verdicts (Phase 4a, §21.6 / §A4.1)
+// ---------------------------------------------------------------------------
+
+export type GuardLayer = 'structural' | 'lexical' | 'classifier';
+
+export interface GuardViolation {
+  layer: GuardLayer;
+  code: string; // stable rule id, e.g. 'lex.directive_verb'
+  detail: string;
+}
+
+export interface GuardVerdict {
+  approved: boolean;
+  violations: GuardViolation[];
+  rulesetVersion: string; // lexical rule set version — versioned like code (FR-12.3)
+  classifierVersion: string;
+  classifierScore: DecimalString;
+  latencyMs: number;
+}
+
+// ---------------------------------------------------------------------------
 // Radar conditions (Phase 3, §16.3 grammar — the MVP machine-evaluable
 // subset per FR-7.3; compound conditions and time qualifiers are v1.1 per
 // FR-7.4). Comparisons are edge-triggered by the evaluator, which makes
