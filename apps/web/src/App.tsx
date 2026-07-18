@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   api,
   ApiError,
@@ -7,7 +7,12 @@ import {
   type PerformanceResponse,
   type Portfolio,
   type PositionRow,
+  type Profile,
 } from './api';
+import { ImportCsv } from './import-csv';
+import { Onboarding } from './onboarding';
+import { RealityCheck } from './reality-ui';
+import { RulesPanel } from './rules-ui';
 
 const pct = (w: string | null | undefined, dp = 2) =>
   w == null ? '—' : `${(Number(w) * 100).toFixed(dp)}%`;
@@ -100,12 +105,24 @@ function Home({ me, onLogout }: { me: Me; onLogout: () => void }) {
   const [selected, setSelected] = useState<Portfolio | null>(null);
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // Onboarding gate (D-002): no profile yet → the adaptive flow, portfolio
+  // first, Reality Check before any question.
+  const [profileState, setProfileState] = useState<'loading' | 'missing' | 'present'>('loading');
 
   const refresh = () =>
     api.get<{ data: Portfolio[] }>('/v1/portfolios').then((r) => setPortfolios(r.data));
   useEffect(() => {
     refresh();
+    api
+      .get<{ data: Profile | null }>('/v1/profile')
+      .then((r) => setProfileState(r.data ? 'present' : 'missing'))
+      .catch(() => setProfileState('missing'));
   }, []);
+
+  if (profileState === 'loading') return <div className="shell">Loading…</div>;
+  if (profileState === 'missing') {
+    return <Onboarding me={me} onComplete={() => { setProfileState('present'); refresh(); }} />;
+  }
 
   const create = async () => {
     setError(null);
@@ -152,10 +169,10 @@ function Home({ me, onLogout }: { me: Me; onLogout: () => void }) {
 
 // ---------------------------------------------------------------------------
 
-type Tab = 'positions' | 'exposure' | 'performance' | 'import';
+type Tab = 'reality' | 'positions' | 'exposure' | 'performance' | 'rules' | 'import';
 
 function PortfolioView({ portfolio, onBack }: { portfolio: Portfolio; onBack: () => void }) {
-  const [tab, setTab] = useState<Tab>('positions');
+  const [tab, setTab] = useState<Tab>('reality');
   return (
     <div className="shell">
       <header>
@@ -163,15 +180,17 @@ function PortfolioView({ portfolio, onBack }: { portfolio: Portfolio; onBack: ()
         <h1>{portfolio.name} <span className="muted">{portfolio.base_currency}</span></h1>
       </header>
       <nav className="tabs">
-        {(['positions', 'exposure', 'performance', 'import'] as Tab[]).map((t) => (
+        {(['reality', 'positions', 'exposure', 'performance', 'rules', 'import'] as Tab[]).map((t) => (
           <button key={t} className={tab === t ? 'tab active' : 'tab'} onClick={() => setTab(t)}>
-            {t}
+            {t === 'reality' ? 'reality check' : t}
           </button>
         ))}
       </nav>
+      {tab === 'reality' && <RealityCheck portfolio={portfolio} />}
       {tab === 'positions' && <Positions portfolio={portfolio} />}
       {tab === 'exposure' && <Exposure portfolio={portfolio} />}
       {tab === 'performance' && <Performance portfolio={portfolio} />}
+      {tab === 'rules' && <RulesPanel />}
       {tab === 'import' && <ImportCsv portfolio={portfolio} onDone={() => setTab('positions')} />}
     </div>
   );
@@ -344,105 +363,4 @@ function Performance({ portfolio }: { portfolio: Portfolio }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// CSV import + mapping UI (Design §B1 Phase 1 deliverable)
-// ---------------------------------------------------------------------------
-
-const FIELDS = ['ticker', 'isin', 'date', 'type', 'quantity', 'price', 'currency', 'fee'] as const;
-type Field = (typeof FIELDS)[number];
-
-function ImportCsv({ portfolio, onDone }: { portfolio: Portfolio; onDone: () => void }) {
-  const [csv, setCsv] = useState('');
-  const [mapping, setMapping] = useState<Partial<Record<Field, string>>>({});
-  const [result, setResult] = useState<{ imported: number; skipped: Array<{ line: number; reason: string }> } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const header = useMemo(() => {
-    const firstLine = csv.split(/\r?\n/)[0] ?? '';
-    return firstLine ? firstLine.split(',').map((h) => h.trim()) : [];
-  }, [csv]);
-
-  useEffect(() => {
-    // auto-map obvious column names
-    const auto: Partial<Record<Field, string>> = {};
-    for (const h of header) {
-      const l = h.toLowerCase();
-      if (['ticker', 'symbol'].includes(l)) auto.ticker = h;
-      if (l === 'isin') auto.isin = h;
-      if (['date', 'trade_date', 'tradedate'].includes(l)) auto.date = h;
-      if (['type', 'side', 'action'].includes(l)) auto.type = h;
-      if (['quantity', 'qty', 'shares'].includes(l)) auto.quantity = h;
-      if (['price', 'unit_price'].includes(l)) auto.price = h;
-      if (['currency', 'ccy'].includes(l)) auto.currency = h;
-      if (['fee', 'fees', 'commission'].includes(l)) auto.fee = h;
-    }
-    setMapping(auto);
-  }, [header.join('|')]);
-
-  const onFile = (f: File | null) => {
-    if (!f) return;
-    f.text().then(setCsv);
-  };
-
-  const submit = async () => {
-    setError(null);
-    setResult(null);
-    try {
-      const res = await api.post<{ imported: number; skipped: Array<{ line: number; reason: string }> }>(
-        `/v1/portfolios/${portfolio.id}/import`,
-        { csv, mapping, defaults: { type: 'buy' } },
-      );
-      setResult(res);
-    } catch (e) {
-      setError(e instanceof ApiError ? `${e.problem.title}${e.problem.detail ? ` — ${e.problem.detail}` : ''}` : String(e));
-    }
-  };
-
-  return (
-    <div className="card">
-      <h3>Import transactions from CSV</h3>
-      <p className="muted">Header row required. Dates as YYYY-MM-DD. Buy/sell at Phase 1.</p>
-      <input type="file" accept=".csv,text/csv" onChange={(e) => onFile(e.target.files?.[0] ?? null)} />
-      <textarea
-        rows={6}
-        placeholder={'ticker,date,quantity,price,currency\nAAPL,2026-02-02,10,220.5,USD'}
-        value={csv}
-        onChange={(e) => setCsv(e.target.value)}
-      />
-      {header.length > 0 && (
-        <>
-          <h4>Column mapping</h4>
-          <div className="mapping">
-            {FIELDS.map((f) => (
-              <label key={f}>
-                {f}
-                <select
-                  value={mapping[f] ?? ''}
-                  onChange={(e) => setMapping({ ...mapping, [f]: e.target.value || undefined })}
-                >
-                  <option value="">—</option>
-                  {header.map((h) => <option key={h}>{h}</option>)}
-                </select>
-              </label>
-            ))}
-          </div>
-        </>
-      )}
-      <button onClick={submit} disabled={!csv}>Import</button>
-      {error && <div className="error">{error}</div>}
-      {result && (
-        <div>
-          <p>Imported {result.imported} transaction(s).</p>
-          {result.skipped.length > 0 && (
-            <ul className="plain">
-              {result.skipped.map((s) => (
-                <li key={s.line} className="error">line {s.line}: {s.reason}</li>
-              ))}
-            </ul>
-          )}
-          <button className="link" onClick={onDone}>View positions →</button>
-        </div>
-      )}
-    </div>
-  );
-}
+// CSV import UI lives in import-csv.tsx (shared with onboarding).

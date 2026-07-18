@@ -1,8 +1,12 @@
-# Atlas — Phase 1 (Ground truth)
+# Atlas — Phases 1–2 (Ground truth + The mirror)
 
-Implementation of **Design blueprint §B1 Phase 1** for Atlas AI, plus the
-minimal Phase-0 scaffolding it structurally requires. Scope, decisions and
-deliberate deferrals: [`docs/adr/ADR-000-phase1-interpretation.md`](docs/adr/ADR-000-phase1-interpretation.md).
+Implementation of **Design blueprint §B1 Phases 1 and 2** for Atlas AI, plus
+the minimal Phase-0 scaffolding they structurally require.
+
+- Phase 1 scope: [`docs/adr/ADR-000-phase1-interpretation.md`](docs/adr/ADR-000-phase1-interpretation.md)
+- Phase 2 scope ("The mirror" — versioned Investor Profile, scenario risk
+  assessment, strategy inference, rules engine, Reality Check, onboarding):
+  [`docs/adr/ADR-001-phase2-mirror.md`](docs/adr/ADR-001-phase2-mirror.md)
 
 ## Layout
 

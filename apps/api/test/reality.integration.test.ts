@@ -130,6 +130,41 @@ describe('GET /v1/portfolios/:id/reality-check', () => {
     expect(a.json().provenance.inputHash).toBe(b.json().provenance.inputHash);
   });
 
+  it('funded import (assume_funded) nets cash to zero so weights have an honest denominator', async () => {
+    const p = await inject({
+      method: 'POST',
+      url: '/v1/portfolios',
+      payload: { name: 'Imported', type: 'taxable', base_currency: 'EUR' },
+    });
+    const pid = p.json().id;
+    const res = await inject({
+      method: 'POST',
+      url: `/v1/portfolios/${pid}/import`,
+      payload: {
+        csv: 'ticker,date,quantity,price,currency\nAAPL,2026-02-02,60,210,USD\nIWDA,2026-02-02,1000,95,EUR',
+        mapping: { ticker: 'ticker', date: 'date', quantity: 'quantity', price: 'price', currency: 'currency' },
+        defaults: { type: 'buy', assume_funded: true },
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().imported).toBe(2);
+
+    const pos = await inject({ method: 'GET', url: `/v1/portfolios/${pid}/positions` });
+    // Every buy was matched by a same-day funding deposit: no fabricated
+    // negative cash, so the Reality Check denominator is the real portfolio.
+    expect(pos.json().data.cash.length).toBe(0);
+
+    const rc = await inject({ method: 'GET', url: `/v1/portfolios/${pid}/reality-check` });
+    const WEIGHT_KEYS = ['total', 'direct', 'viaFunds', 'weight', 'foreignShare'];
+    for (const s of rc.json().data.top) {
+      for (const [k, v] of Object.entries(s.values)) {
+        if (WEIGHT_KEYS.includes(k)) {
+          expect(Number(v), `${s.kind}.${k}`).toBeLessThanOrEqual(1.0001); // fractions, not 243%
+        }
+      }
+    }
+  });
+
   it('404s on a portfolio the user does not own', async () => {
     const res = await inject({
       method: 'GET',
