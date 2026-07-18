@@ -6,6 +6,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createPool } from '@atlas/schema';
+import { routeEvents } from '@atlas/bus';
 import { MockVendorAdapter, SNAPSHOT_FROM, SNAPSHOT_TO } from './mock-vendor.js';
 import { CollectingEventSink, IngestPipeline } from './pipeline.js';
 import { runQualityChecks } from './quality.js';
@@ -36,6 +37,11 @@ try {
         .map((t) => `${t}=${sink.events.filter((e) => e.type === t).length}`)
         .join(', ')})`,
   );
+
+  // Phase 3: record events in the log and enqueue derived work (§24.2).
+  // Run `npm run workers` afterwards to drain the queue.
+  const { jobsEnqueued } = await routeEvents(pool, sink.events);
+  console.log(`event log: ${sink.events.length} recorded, ${jobsEnqueued} security.changed job(s) enqueued`);
 
   const report = await runQualityChecks(pool, SNAPSHOT_FROM, SNAPSHOT_TO, stats.resolutionFindings);
   const reportsDir = process.env.ATLAS_REPORTS_DIR ?? join(process.cwd(), 'ops', 'reports');

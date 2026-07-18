@@ -7,6 +7,8 @@
     "packages/contracts",
     "packages/domain",
     "packages/schema",
+    "packages/bus",
+    "services/workers",
     "services/ingest",
     "services/signal-engine",
     "apps/api",
@@ -19,7 +21,8 @@
     "migrate": "node packages/schema/dist/cli.js up",
     "ingest": "node services/ingest/dist/cli.js run",
     "api": "node apps/api/dist/index.js",
-    "quality-report": "node ops/dist/quality-report.js"
+    "quality-report": "node ops/dist/quality-report.js",
+    "workers": "node services/workers/dist/cli.js drain"
   },
   "devDependencies": {
     "typescript": "^5.5.4",

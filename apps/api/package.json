@@ -4,6 +4,10 @@
   "type": "module",
   "main": "dist/server.js",
   "types": "dist/server.d.ts",
+  "exports": {
+    ".": { "types": "./dist/server.d.ts", "default": "./dist/server.js" },
+    "./internal": { "types": "./dist/internal.d.ts", "default": "./dist/internal.js" }
+  },
   "dependencies": {
     "@atlas/contracts": "0.1.0",
     "@atlas/domain": "0.1.0",

@@ -9,6 +9,7 @@ export default defineConfig({
       'packages/**/test/**/*.test.ts',
       'services/signal-engine/golden/**/*.test.ts',
       'services/ingest/test/**/*.test.ts',
+      'services/workers/test/**/*.test.ts',
       'apps/api/test/**/*.test.ts',
     ],
     testTimeout: 120_000,
