@@ -1,18 +1,15 @@
 {
-  "name": "@atlas/workers",
+  "name": "@atlas/dataplane",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
   "dependencies": {
-    "@atlas/api": "0.1.0",
-    "@atlas/bus": "0.1.0",
     "@atlas/contracts": "0.1.0",
     "@atlas/domain": "0.1.0",
-    "@atlas/schema": "0.1.0",
     "@atlas/signal-engine": "0.1.0",
-    "pg": "^8.13.1",
-    "@atlas/dataplane": "0.1.0"
+    "pg": "^8.13.1"
   },
   "devDependencies": {
     "@types/pg": "^8.11.10"

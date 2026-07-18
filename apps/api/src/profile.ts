@@ -17,12 +17,12 @@ import type { FastifyInstance } from 'fastify';
 import type pg from 'pg';
 import { z } from 'zod';
 import type { RiskBand, RiskScenario } from '@atlas/contracts';
-import { computePortfolioSignals, inferStrategy, type PeInput } from '@atlas/signal-engine';
-import { dec, fixed, str } from '@atlas/domain';
+import { computePortfolioSignals, inferStrategy } from '@atlas/signal-engine';
+import { dec, fixed } from '@atlas/domain';
+import { loadEngineInputs, loadPeInputs } from '@atlas/dataplane';
 import { audit, requireUser } from './auth.js';
 import { problem } from './http.js';
 import { ownedPortfolio } from './portfolios.js';
-import { loadEngineInputs } from './signals.js';
 
 const STRATEGIES = ['quality_growth', 'value', 'dividend_income', 'passive_index', 'unknown'] as const;
 const CAPITAL_BANDS = ['<25k', '25k-100k', '100k-500k', '>500k'] as const;
@@ -155,31 +155,9 @@ const PROFILE_COLS = `version, experience_level, horizon_years, capital_band,
   risk_stated, risk_revealed, risk_divergence_flag, scenario_responses,
   change_reason, changed_by, valid_from`;
 
-export async function loadPeInputs(pool: pg.Pool, securityIds: string[]): Promise<PeInput[]> {
-  if (securityIds.length === 0) return [];
-  // P/E = latest adjusted close / latest ttm diluted EPS, same currency only.
-  const { rows } = await pool.query(
-    `SELECT f.security_id, f.value::text AS eps, f.currency AS eps_ccy,
-            p.adjusted_close::text AS close, p.currency AS px_ccy
-       FROM (SELECT DISTINCT ON (security_id) security_id, value, currency
-               FROM fundamentals
-              WHERE metric = 'eps_diluted_ttm' AND security_id = ANY($1)
-              ORDER BY security_id, as_of DESC) f
-       JOIN (SELECT DISTINCT ON (security_id) security_id, adjusted_close, currency
-               FROM price_bars WHERE security_id = ANY($1)
-              ORDER BY security_id, bar_date DESC) p
-         ON p.security_id = f.security_id`,
-    [securityIds],
-  );
-  const out: PeInput[] = [];
-  for (const r of rows) {
-    if (r.eps_ccy && r.eps_ccy !== r.px_ccy) continue; // no cross-currency P/E
-    const eps = dec(r.eps);
-    if (eps.lte(0)) continue;
-    out.push({ securityId: r.security_id, pe: str(dec(r.close).div(eps)) });
-  }
-  return out;
-}
+// loadPeInputs moved to @atlas/dataplane in Phase 4b; imported for local use
+// here and re-exported so reality.ts and @atlas/api/internal keep resolving.
+export { loadPeInputs };
 
 export function registerProfileRoutes(app: FastifyInstance, pool: pg.Pool): void {
   app.get('/v1/profile', async (req, reply) => {

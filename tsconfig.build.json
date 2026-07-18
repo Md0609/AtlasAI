@@ -36,6 +36,9 @@
     },
     {
       "path": "services/intelligence/runtime"
+    },
+    {
+      "path": "packages/dataplane"
     }
   ]
 }
