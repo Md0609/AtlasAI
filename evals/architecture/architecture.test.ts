@@ -96,6 +96,18 @@ describe('§47.2 — values enforced by build failure', () => {
     expect(/profile_versions_immutable/.test(all)).toBe(true);
   });
 
+  it('no prompt instructs the model to compute (P4/§21.4)', async () => {
+    // The registry lints at registration time; this asserts the lint holds
+    // for every prompt actually registered in the shipped library.
+    const { allPrompts, composePrompt } = await import('@atlas/runtime');
+    expect(allPrompts().length).toBeGreaterThan(0);
+    for (const p of allPrompts()) {
+      const composed = composePrompt(p.sections);
+      expect(composed).not.toMatch(/\b(calculate|compute|do the (math|arithmetic))\b/i);
+      expect(composed).not.toMatch(/\bbe helpful\b/i);
+    }
+  });
+
   it('the API delivery layer never renders intelligence prose that skipped egress', () => {
     // At 4a no LLM output exists; the enforceable invariant today: nothing in
     // apps/ constructs Contextualization rendering by hand — apps may only

@@ -33,6 +33,9 @@
     },
     {
       "path": "services/intelligence/egress"
+    },
+    {
+      "path": "services/intelligence/runtime"
     }
   ]
 }

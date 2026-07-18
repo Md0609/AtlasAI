@@ -10,6 +10,7 @@
     "packages/bus",
     "services/intelligence/guard",
     "services/intelligence/egress",
+    "services/intelligence/runtime",
     "services/workers",
     "services/ingest",
     "services/signal-engine",
