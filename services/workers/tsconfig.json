@@ -5,13 +5,30 @@
     "outDir": "dist",
     "composite": true
   },
-  "include": ["src"],
+  "include": [
+    "src"
+  ],
   "references": [
-    { "path": "../../packages/contracts" },
-    { "path": "../../packages/domain" },
-    { "path": "../../packages/schema" },
-    { "path": "../../packages/bus" },
-    { "path": "../signal-engine" },
-    { "path": "../../apps/api" }
+    {
+      "path": "../../packages/contracts"
+    },
+    {
+      "path": "../../packages/domain"
+    },
+    {
+      "path": "../../packages/schema"
+    },
+    {
+      "path": "../../packages/bus"
+    },
+    {
+      "path": "../signal-engine"
+    },
+    {
+      "path": "../../apps/api"
+    },
+    {
+      "path": "../../packages/dataplane"
+    }
   ]
 }

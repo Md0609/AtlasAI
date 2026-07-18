@@ -15,7 +15,7 @@ import type pg from 'pg';
 import { enqueue, recordEvent, type Job } from '@atlas/bus';
 import type { RadarCondition } from '@atlas/contracts';
 import { evaluateRadarCondition } from '@atlas/signal-engine';
-import { conditionSecurityIds, loadRadarContext } from '@atlas/api/internal';
+import { conditionSecurityIds, loadRadarContext } from '@atlas/dataplane';
 
 const AUTO_SUPPRESS_FIRES = 3;
 const AUTO_SUPPRESS_WINDOW_DAYS = 30;

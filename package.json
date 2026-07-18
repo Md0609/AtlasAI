@@ -8,6 +8,7 @@
     "packages/domain",
     "packages/schema",
     "packages/bus",
+    "packages/dataplane",
     "services/intelligence/guard",
     "services/intelligence/egress",
     "services/intelligence/runtime",
