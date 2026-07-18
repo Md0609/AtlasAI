@@ -9,6 +9,7 @@
     "packages/schema",
     "packages/bus",
     "services/intelligence/guard",
+    "services/intelligence/egress",
     "services/workers",
     "services/ingest",
     "services/signal-engine",
