@@ -8,6 +8,7 @@
     "packages/domain",
     "packages/schema",
     "packages/bus",
+    "services/intelligence/guard",
     "services/workers",
     "services/ingest",
     "services/signal-engine",
