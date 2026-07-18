@@ -9,4 +9,5 @@ export * from './strategy.js';
 export * from './rules.js';
 export * from './correlation.js';
 export * from './surprise.js';
+export * from './radar.js';
 export * from './engine.js';

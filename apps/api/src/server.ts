@@ -9,8 +9,10 @@ import type pg from 'pg';
 import { loadUser, registerAuthRoutes } from './auth.js';
 import { registerPortfolioRoutes } from './portfolios.js';
 import { registerProfileRoutes } from './profile.js';
+import { registerRadarRoutes } from './radars.js';
 import { registerRealityRoutes } from './reality.js';
 import { registerRuleRoutes } from './rules.js';
+import { registerThesisRoutes } from './theses.js';
 import { registerSignalRoutes } from './signals.js';
 import { problem } from './http.js';
 
@@ -50,6 +52,8 @@ export async function buildServer(pool: pg.Pool): Promise<FastifyInstance> {
   registerRealityRoutes(app, pool);
   registerRuleRoutes(app, pool);
   registerSignalRoutes(app, pool);
+  registerThesisRoutes(app, pool);
+  registerRadarRoutes(app, pool);
 
   return app;
 }

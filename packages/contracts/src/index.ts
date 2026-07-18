@@ -217,6 +217,45 @@ export interface PerformanceResult {
 }
 
 // ---------------------------------------------------------------------------
+// Radar conditions (Phase 3, §16.3 grammar — the MVP machine-evaluable
+// subset per FR-7.3; compound conditions and time qualifiers are v1.1 per
+// FR-7.4). Comparisons are edge-triggered by the evaluator, which makes
+// crosses_above/below redundant: `price <= X` fired on the false→true
+// transition IS a downward cross.
+// ---------------------------------------------------------------------------
+
+export type RadarMetric =
+  | { kind: 'price'; securityId: string }
+  | { kind: 'valuation.pe_ttm'; securityId: string }
+  | { kind: 'fundamental'; securityId: string; name: string }
+  | { kind: 'portfolio.weight'; securityId: string } // look-through total
+  | { kind: 'portfolio.sector_exposure'; sector: string }
+  | { kind: 'portfolio.cash_weight' }
+  | { kind: 'rule.breach'; ruleId: string };
+
+export type RadarOperator = 'lt' | 'lte' | 'gt' | 'gte';
+
+export type RadarTarget =
+  | { kind: 'literal'; value: DecimalString }
+  /** A stat over the metric's own history, e.g. "below its 5y median × 0.9". */
+  | { kind: 'self_history'; stat: 'median' | 'min' | 'max'; windowDays: number; factor?: DecimalString };
+
+export interface RadarCondition {
+  metric: RadarMetric;
+  operator: RadarOperator;
+  target: RadarTarget;
+}
+
+export interface RadarEvaluation {
+  /** Current metric value; null when not computable (declared gap). */
+  value: DecimalString | null;
+  /** Resolved target value; null when not computable. */
+  target: DecimalString | null;
+  met: boolean | null; // null = not evaluable
+  gap: string | null;
+}
+
+// ---------------------------------------------------------------------------
 // Correlation clusters (US-PF-03, §14.3 D8) — Phase 2, computed on available
 // history with an explicit warning when the window is short.
 // ---------------------------------------------------------------------------
@@ -314,11 +353,31 @@ export interface SignalRecomputedEvent extends EventBase {
   inputHash: string;
 }
 
+export interface RadarFiredEvent extends EventBase {
+  type: 'radar.fired';
+  radarId: string;
+  userId: string;
+}
+
+/**
+ * §24.2: thesis.falsified is downstream of radar.fired. The event records
+ * that the user's own stated condition was met — the thesis STATUS change
+ * remains a user decision (P1: Atlas surfaces, the user decides).
+ */
+export interface ThesisFalsifiedEvent extends EventBase {
+  type: 'thesis.falsified';
+  thesisId: string;
+  conditionId: string;
+  userId: string;
+}
+
 export type DomainEvent =
   | MarketPriceEodEvent
   | CorporateActionEvent
   | FundHoldingsUpdatedEvent
-  | SignalRecomputedEvent;
+  | SignalRecomputedEvent
+  | RadarFiredEvent
+  | ThesisFalsifiedEvent;
 
 // ---------------------------------------------------------------------------
 // Investor Profile (Phase 2 "The mirror": FR-2, US-ONB-03/04)

@@ -19,6 +19,9 @@
     },
     {
       "path": "../../services/signal-engine"
+    },
+    {
+      "path": "../../packages/bus"
     }
   ]
 }

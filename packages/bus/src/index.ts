@@ -28,6 +28,9 @@ export function partitionKeyFor(event: DomainEvent): string {
       return event.fundSecurityId;
     case 'signal.recomputed':
       return event.portfolioId;
+    case 'radar.fired':
+    case 'thesis.falsified':
+      return event.userId;
     default:
       return 'global';
   }

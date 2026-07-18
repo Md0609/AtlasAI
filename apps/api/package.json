@@ -5,10 +5,17 @@
   "main": "dist/server.js",
   "types": "dist/server.d.ts",
   "exports": {
-    ".": { "types": "./dist/server.d.ts", "default": "./dist/server.js" },
-    "./internal": { "types": "./dist/internal.d.ts", "default": "./dist/internal.js" }
+    ".": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    },
+    "./internal": {
+      "types": "./dist/internal.d.ts",
+      "default": "./dist/internal.js"
+    }
   },
   "dependencies": {
+    "@atlas/bus": "0.1.0",
     "@atlas/contracts": "0.1.0",
     "@atlas/domain": "0.1.0",
     "@atlas/schema": "0.1.0",
