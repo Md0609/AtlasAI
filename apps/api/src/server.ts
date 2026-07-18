@@ -7,6 +7,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
 import type pg from 'pg';
 import { loadUser, registerAuthRoutes } from './auth.js';
+import { registerBriefRoutes } from './briefs.js';
 import { registerPortfolioRoutes } from './portfolios.js';
 import { registerProfileRoutes } from './profile.js';
 import { registerRadarRoutes } from './radars.js';
@@ -54,6 +55,7 @@ export async function buildServer(pool: pg.Pool): Promise<FastifyInstance> {
   registerSignalRoutes(app, pool);
   registerThesisRoutes(app, pool);
   registerRadarRoutes(app, pool);
+  registerBriefRoutes(app, pool);
 
   return app;
 }

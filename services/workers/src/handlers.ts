@@ -15,8 +15,9 @@ import { evaluateAndPersistUserRules, loadConsolidatedInputs } from '@atlas/api/
 
 /**
  * security.changed {securityId}: fan out to every user exposed to it —
- * directly or through a fund that holds it (look-through, depth ≤ 3 via a
- * recursive CTE; §30.1).
+ * directly, through a fund that holds it (look-through via recursive CTE,
+ * §30.1), or through an active radar watching it (a radar on a candidate
+ * the user doesn't hold must still evaluate, §15.1).
  */
 export async function handleSecurityChanged(pool: pg.Pool, job: Job): Promise<void> {
   const securityId = String(job.payload.securityId ?? '');
@@ -32,7 +33,10 @@ export async function handleSecurityChanged(pool: pg.Pool, job: Job): Promise<vo
      SELECT DISTINCT p.user_id
        FROM positions pos
        JOIN portfolios p ON p.id = pos.portfolio_id AND p.deleted_at IS NULL
-      WHERE pos.security_id IN (SELECT security_id FROM exposed)`,
+      WHERE pos.security_id IN (SELECT security_id FROM exposed)
+     UNION
+     SELECT DISTINCT r.user_id FROM radars r
+      WHERE r.security_id = $1::uuid AND r.status = 'active'`,
     [securityId],
   );
   for (const r of rows) {
