@@ -1,6 +1,6 @@
-# Atlas — Phases 1–3 (Ground truth + The mirror + Commitment loop)
+# Atlas — Phases 1–4a (Ground truth · The mirror · Commitment loop · Guardrails)
 
-Implementation of **Design blueprint §B1 Phases 1–3** for Atlas AI, plus
+Implementation of **Design blueprint §B1 Phases 1–4a** for Atlas AI, plus
 the minimal Phase-0 scaffolding they structurally require.
 
 - Phase 1 scope: [`docs/adr/ADR-000-phase1-interpretation.md`](docs/adr/ADR-000-phase1-interpretation.md)
@@ -11,6 +11,11 @@ the minimal Phase-0 scaffolding they structurally require.
   falsification→auto-radar, event bus + workers, deterministic briefs with
   the notification budget as a schema constraint, decision recording):
   [`docs/adr/ADR-002-phase3-commitment-loop.md`](docs/adr/ADR-002-phase3-commitment-loop.md)
+- Phase 4a scope ("Guardrails" — Contextualization schema, 3-layer
+  Compliance Guard, typed egress as the sole constructor of
+  UserFacingContent, adversarial evals as CI gate, prompt registry,
+  tracing + cost ceilings):
+  [`docs/adr/ADR-003-phase4a-guardrails.md`](docs/adr/ADR-003-phase4a-guardrails.md)
 
 ## Layout
 
