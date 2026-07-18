@@ -1,12 +1,16 @@
-# Atlas — Phases 1–2 (Ground truth + The mirror)
+# Atlas — Phases 1–3 (Ground truth + The mirror + Commitment loop)
 
-Implementation of **Design blueprint §B1 Phases 1 and 2** for Atlas AI, plus
+Implementation of **Design blueprint §B1 Phases 1–3** for Atlas AI, plus
 the minimal Phase-0 scaffolding they structurally require.
 
 - Phase 1 scope: [`docs/adr/ADR-000-phase1-interpretation.md`](docs/adr/ADR-000-phase1-interpretation.md)
 - Phase 2 scope ("The mirror" — versioned Investor Profile, scenario risk
   assessment, strategy inference, rules engine, Reality Check, onboarding):
   [`docs/adr/ADR-001-phase2-mirror.md`](docs/adr/ADR-001-phase2-mirror.md)
+- Phase 3 scope ("Commitment loop" — immutable Thesis Ledger,
+  falsification→auto-radar, event bus + workers, deterministic briefs with
+  the notification budget as a schema constraint, decision recording):
+  [`docs/adr/ADR-002-phase3-commitment-loop.md`](docs/adr/ADR-002-phase3-commitment-loop.md)
 
 ## Layout
 
@@ -46,6 +50,7 @@ npm run migrate        # apply SQL migrations
 npm run ingest         # mock-vendor EOD snapshot 2026-01-02 → 2026-06-30 + quality report
 npm run quality-report # render ops/reports/quality-latest.json
 npm run api            # API on :3000
+npm run workers        # drain the job queue once (radar eval → briefs → email outbox)
 npm run dev -w @atlas/web   # web on :5173 (proxies /v1 to :3000)
 ```
 

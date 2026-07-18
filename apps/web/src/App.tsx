@@ -13,6 +13,10 @@ import { ImportCsv } from './import-csv';
 import { Onboarding } from './onboarding';
 import { RealityCheck } from './reality-ui';
 import { RulesPanel } from './rules-ui';
+import { TodayView } from './today-ui';
+import { ThesisPanel } from './thesis-ui';
+import { RadarPanel } from './radar-ui';
+import { JournalView } from './journal-ui';
 
 const pct = (w: string | null | undefined, dp = 2) =>
   w == null ? '—' : `${(Number(w) * 100).toFixed(dp)}%`;
@@ -119,6 +123,10 @@ function Home({ me, onLogout }: { me: Me; onLogout: () => void }) {
       .catch(() => setProfileState('missing'));
   }, []);
 
+  // §11.1 primary destinations available at Phase 3: Today, Portfolio,
+  // Radar, Journal. Copilot arrives with the intelligence plane (Phase 4b).
+  const [section, setSection] = useState<'today' | 'portfolios' | 'radar' | 'journal'>('today');
+
   if (profileState === 'loading') return <div className="shell">Loading…</div>;
   if (profileState === 'missing') {
     return <Onboarding me={me} onComplete={() => { setProfileState('present'); refresh(); }} />;
@@ -145,31 +153,43 @@ function Home({ me, onLogout }: { me: Me; onLogout: () => void }) {
         <h1>Atlas</h1>
         <div className="muted">{me.email} · {me.jurisdiction} <button className="link" onClick={onLogout}>Log out</button></div>
       </header>
-      <h2>Portfolios</h2>
-      <div className="card">
-        {portfolios.length === 0 && <p className="muted">No portfolios yet.</p>}
-        <ul className="plain">
-          {portfolios.map((p) => (
-            <li key={p.id}>
-              <button className="row" onClick={() => setSelected(p)}>
-                <strong>{p.name}</strong> <span className="muted">{p.type} · {p.base_currency}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-        <div className="inline">
-          <input placeholder="New portfolio name" value={name} onChange={(e) => setName(e.target.value)} />
-          <button onClick={create}>Create</button>
+      <nav className="tabs">
+        {(['today', 'portfolios', 'radar', 'journal'] as const).map((s) => (
+          <button key={s} className={section === s ? 'tab active' : 'tab'} onClick={() => setSection(s)}>
+            {s}
+          </button>
+        ))}
+      </nav>
+
+      {section === 'today' && <TodayView />}
+      {section === 'radar' && <RadarPanel />}
+      {section === 'journal' && <JournalView />}
+      {section === 'portfolios' && (
+        <div className="card">
+          {portfolios.length === 0 && <p className="muted">No portfolios yet.</p>}
+          <ul className="plain">
+            {portfolios.map((p) => (
+              <li key={p.id}>
+                <button className="row" onClick={() => setSelected(p)}>
+                  <strong>{p.name}</strong> <span className="muted">{p.type} · {p.base_currency}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="inline">
+            <input placeholder="New portfolio name" value={name} onChange={(e) => setName(e.target.value)} />
+            <button onClick={create}>Create</button>
+          </div>
+          {error && <div className="error">{error}</div>}
         </div>
-        {error && <div className="error">{error}</div>}
-      </div>
+      )}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
 
-type Tab = 'reality' | 'positions' | 'exposure' | 'performance' | 'rules' | 'import';
+type Tab = 'reality' | 'positions' | 'theses' | 'exposure' | 'performance' | 'rules' | 'import';
 
 function PortfolioView({ portfolio, onBack }: { portfolio: Portfolio; onBack: () => void }) {
   const [tab, setTab] = useState<Tab>('reality');
@@ -180,7 +200,7 @@ function PortfolioView({ portfolio, onBack }: { portfolio: Portfolio; onBack: ()
         <h1>{portfolio.name} <span className="muted">{portfolio.base_currency}</span></h1>
       </header>
       <nav className="tabs">
-        {(['reality', 'positions', 'exposure', 'performance', 'rules', 'import'] as Tab[]).map((t) => (
+        {(['reality', 'positions', 'theses', 'exposure', 'performance', 'rules', 'import'] as Tab[]).map((t) => (
           <button key={t} className={tab === t ? 'tab active' : 'tab'} onClick={() => setTab(t)}>
             {t === 'reality' ? 'reality check' : t}
           </button>
@@ -188,6 +208,7 @@ function PortfolioView({ portfolio, onBack }: { portfolio: Portfolio; onBack: ()
       </nav>
       {tab === 'reality' && <RealityCheck portfolio={portfolio} />}
       {tab === 'positions' && <Positions portfolio={portfolio} />}
+      {tab === 'theses' && <ThesisPanel portfolio={portfolio} />}
       {tab === 'exposure' && <Exposure portfolio={portfolio} />}
       {tab === 'performance' && <Performance portfolio={portfolio} />}
       {tab === 'rules' && <RulesPanel />}

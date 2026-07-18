@@ -171,6 +171,117 @@ export interface RealityCheckResponse {
   staleness: { prices_as_of: string | null; fx_as_of: string | null; holdings_as_of: string | null };
 }
 
+// -- Phase 3: theses, radars, briefs, decisions -----------------------------
+
+export interface RadarConditionAst {
+  metric:
+    | { kind: 'price'; securityId: string }
+    | { kind: 'valuation.pe_ttm'; securityId: string }
+    | { kind: 'fundamental'; securityId: string; name: string }
+    | { kind: 'portfolio.weight'; securityId: string }
+    | { kind: 'portfolio.sector_exposure'; sector: string }
+    | { kind: 'portfolio.cash_weight' }
+    | { kind: 'rule.breach'; ruleId: string };
+  operator: 'lt' | 'lte' | 'gt' | 'gte';
+  target:
+    | { kind: 'literal'; value: string }
+    | { kind: 'self_history'; stat: 'median' | 'min' | 'max'; windowDays: number; factor?: string };
+}
+
+export interface ThesisCondition {
+  id: string;
+  condition_nl: string;
+  rendered: string;
+  status: 'watching' | 'met';
+  met_at: string | null;
+  radar: { id: string | null; status: string | null; last_observed: { value: string | null; target: string | null } | null };
+}
+
+export interface Thesis {
+  id: string;
+  security_id: string;
+  security_name: string;
+  version: number;
+  statement: string;
+  time_horizon_months: number | null;
+  confidence_at_creation: number | null;
+  status: 'active' | 'falsified' | 'retired' | 'superseded';
+  status_reason: string | null;
+  created_at: string;
+  stale: boolean;
+  conditions: ThesisCondition[];
+}
+
+export interface Radar {
+  id: string;
+  name: string;
+  security_id: string | null;
+  security_name: string | null;
+  condition_nl: string;
+  rendered: string;
+  source: 'manual' | 'thesis';
+  status: 'active' | 'paused' | 'archived';
+  paused_reason: string | null;
+  snoozed_until: string | null;
+  last_met: boolean | null;
+  last_observed: { value: string | null; target: string | null; gap?: string | null } | null;
+  last_evaluated_at: string | null;
+  fire_count: number;
+  created_at: string;
+}
+
+export interface RadarFire {
+  id: string;
+  radar_id: string;
+  radar_name: string;
+  condition_nl: string;
+  source: string;
+  fired_at: string;
+  observed: { value: string | null; target: string | null };
+  brief_id: string | null;
+}
+
+export interface Brief {
+  id: string;
+  class: 'C0' | 'C1' | 'C2';
+  headline: string;
+  body: string;
+  tone: 'neutral' | 'light' | 'calm';
+  security_id: string | null;
+  security_name: string | null;
+  thesis_id: string | null;
+  created_at: string;
+  read_at: string | null;
+}
+
+export interface Decision {
+  id: string;
+  action: string;
+  security_id: string | null;
+  security_name: string | null;
+  thesis_id: string | null;
+  brief_id: string | null;
+  reason_free_text: string;
+  decided_at: string;
+}
+
+export interface Suppression {
+  id: string;
+  class: string;
+  reason: string;
+  created_at: string;
+  headline: string | null;
+}
+
+export interface SecurityHit {
+  id: string;
+  name: string;
+  type: string;
+  currency: string;
+  ticker: string;
+  exchange: string;
+}
+
 export interface PerformanceResponse {
   data: {
     window?: { from: string; to: string };
