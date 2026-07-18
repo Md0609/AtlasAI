@@ -75,6 +75,14 @@ const importSchema = z.object({
       exchange: z.string().optional(),
       currency: z.string().length(3).optional(),
       type: z.enum(['buy', 'sell']).default('buy'),
+      /**
+       * When true, every imported buy gets a matching same-day deposit: the
+       * cash that funded it lived at the broker, outside this record. Without
+       * this, an import-only portfolio fabricates deeply negative cash and
+       * every weight (and the Reality Check) is computed against a nonsense
+       * denominator. Deposits also give MWR its external flows (US-PF-06).
+       */
+      assume_funded: z.boolean().default(false),
     })
     .default({}),
 });
@@ -538,6 +546,15 @@ export function registerPortfolioRoutes(app: FastifyInstance, pool: pg.Pool): vo
         }
         const currency = (get(cols.currency) || defaults.currency || p.base_currency).toUpperCase();
         const fee = get(cols.fee) || '0';
+        if (defaults.assume_funded && rawType === 'buy') {
+          await insertTransaction(client, id, {
+            type: 'deposit',
+            trade_date: tradeDate,
+            amount: str(dec(quantity).times(price).plus(fee)),
+            currency,
+            note: 'auto: funding for imported buy',
+          });
+        }
         await insertTransaction(client, id, {
           security_id: securityId,
           type: rawType,

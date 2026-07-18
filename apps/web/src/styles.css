@@ -65,3 +65,25 @@ tr.unknown td { background: var(--warn-bg); color: var(--warn-ink); }
 }
 .mapping { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 textarea { font-family: ui-monospace, monospace; font-size: 0.9em; }
+
+/* -- Phase 2: onboarding, reality check, rules ---------------------------- */
+.surprise { border-left: 3px solid var(--accent); padding: 4px 12px; margin: 14px 0; }
+.surprise h4 { margin: 4px 0; }
+.strategy-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 12px 0; }
+.strategy-card {
+  display: flex; flex-direction: column; gap: 6px; text-align: left;
+  background: var(--card); color: var(--ink); border: 1px solid var(--line);
+  padding: 14px; border-radius: 10px;
+}
+.strategy-card.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.card.inner { background: var(--bg); }
+.scenario { margin: 16px 0; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+label.option { display: block; margin: 6px 0; }
+label.option input { display: inline; width: auto; margin-right: 6px; }
+.rule { border-bottom: 1px solid var(--line); padding: 10px 0; }
+.rule.breach { background: var(--warn-bg); border-radius: 6px; padding: 10px; }
+.rule-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.status-ok { color: var(--accent); }
+.status-breach { color: var(--err); font-weight: 600; }
+.rule blockquote { margin: 8px 0; padding-left: 10px; border-left: 2px solid var(--line); font-style: italic; }
+.suggestion { margin: 10px 0; }
