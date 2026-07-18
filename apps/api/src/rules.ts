@@ -23,6 +23,7 @@ import {
   type SellRecord,
 } from '@atlas/signal-engine';
 import { dec, fixed, str } from '@atlas/domain';
+import { enqueue } from '@atlas/bus';
 import { audit, requireUser } from './auth.js';
 import { problem } from './http.js';
 import { loadConsolidatedInputs, type Db } from './signals.js';
@@ -134,6 +135,15 @@ export async function evaluateAndPersistUserRules(
   }));
   const results = evaluateRules(rules, ctx);
 
+  // Previous status per rule, to detect ok→breach transitions (C1 briefs
+  // fire on the transition, not on every evaluation while breached).
+  const { rows: prevRows } = await db.query(
+    `SELECT DISTINCT ON (rule_id) rule_id, status FROM rule_evaluations
+      WHERE user_id = $1 ORDER BY rule_id, evaluated_at DESC`,
+    [userId],
+  );
+  const prevStatus = new Map<string, string>(prevRows.map((r) => [r.rule_id, r.status]));
+
   await db.query(`SELECT ensure_rule_evaluations_partition(now())`);
   for (const res of results) {
     await db.query(
@@ -141,6 +151,10 @@ export async function evaluateAndPersistUserRules(
        VALUES ($1,$2,$3,$4,$5,$6)`,
       [res.ruleId, userId, res.status, JSON.stringify(res.observed), signals.engineVersion, signals.inputHash],
     );
+    if (res.status === 'breach' && prevStatus.get(res.ruleId) !== 'breach') {
+      // §18.4 class C1, generated in the same transaction as the evaluation.
+      await enqueue(db, 'brief.generate', userId, { kind: 'rule_breach', ruleId: res.ruleId, userId });
+    }
   }
 }
 
