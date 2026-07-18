@@ -63,7 +63,7 @@ async function generateRadarFireBrief(pool: pg.Pool, userId: string, fireId: str
   let headline: string;
   let body: string;
   if (isThesis) {
-    const written = String(fire.thesis_created_at).slice(0, 10);
+    const written = new Date(fire.thesis_created_at).toISOString().slice(0, 10);
     // §6.2: the thesis quote creates accountability to the user's past self.
     headline = `${subject} — your own falsification condition just fired.`;
     body =

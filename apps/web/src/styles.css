@@ -87,3 +87,19 @@ label.option input { display: inline; width: auto; margin-right: 6px; }
 .status-breach { color: var(--err); font-weight: 600; }
 .rule blockquote { margin: 8px 0; padding-left: 10px; border-left: 2px solid var(--line); font-style: italic; }
 .suggestion { margin: 10px 0; }
+
+/* -- Phase 3: today, briefs, theses, radars ------------------------------- */
+.card.quiet { text-align: center; padding: 40px 20px; }
+.brief { border-left: 3px solid var(--line); padding: 6px 14px; margin: 14px 0; }
+.brief.hero { border-left-color: var(--accent); background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 10px; padding: 16px; }
+.brief.read { opacity: 0.65; }
+.brief.tone-calm { border-left-color: #6a8caf; }   /* never red, never urgent (§18.5) */
+.brief.tone-light { border-left-color: #c8a24b; }
+.brief-body { white-space: pre-line; }
+.brief-actions button { margin-top: 4px; }
+.thesis { border-bottom: 1px solid var(--line); padding: 10px 0; }
+.thesis blockquote { margin: 8px 0; padding-left: 10px; border-left: 2px solid var(--accent); font-style: italic; }
+.thesis.status-falsified blockquote, .thesis.status-retired blockquote, .thesis.status-superseded blockquote { border-left-color: var(--line); color: var(--muted); }
+.builder { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin: 8px 0; }
+.builder .inline { align-items: flex-start; flex-wrap: wrap; }
+.builder label { flex: 1; min-width: 130px; }
