@@ -1,20 +1,11 @@
 {
-  "name": "@atlas/ingest",
+  "name": "@atlas/bus",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    }
-  },
   "dependencies": {
-    "@atlas/bus": "0.1.0",
     "@atlas/contracts": "0.1.0",
-    "@atlas/domain": "0.1.0",
-    "@atlas/schema": "0.1.0",
     "pg": "^8.13.1"
   },
   "devDependencies": {
