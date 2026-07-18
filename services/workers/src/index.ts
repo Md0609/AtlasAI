@@ -6,15 +6,18 @@
 import type pg from 'pg';
 import { WorkerRunner } from './runner.js';
 import { handleSecurityChanged, handleUserRecompute } from './handlers.js';
+import { handleRadarEvaluate } from './radar-worker.js';
 
 export function buildRunner(pool: pg.Pool): WorkerRunner {
   return new WorkerRunner(pool)
     .register('security.changed', handleSecurityChanged)
     .register('user.recompute', handleUserRecompute)
-    // Radar evaluation lands with the thesis/radar feature; registering a
-    // no-op keeps the chain drainable until then.
-    .register('radar.evaluate', async () => {});
+    .register('radar.evaluate', handleRadarEvaluate)
+    // Brief generation lands with the briefs/notifications feature; a no-op
+    // keeps the chain drainable until then.
+    .register('brief.generate', async () => {});
 }
 
 export { WorkerRunner } from './runner.js';
 export { handleSecurityChanged, handleUserRecompute } from './handlers.js';
+export { handleRadarEvaluate } from './radar-worker.js';
