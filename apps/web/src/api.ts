@@ -39,6 +39,84 @@ export const api = {
   del: <T>(path: string, body?: unknown) => request<T>('DELETE', path, body),
 };
 
+// ---------------------------------------------------------------------------
+// Copilot (§11.2)
+// ---------------------------------------------------------------------------
+
+export type CopilotContextType = 'security' | 'portfolio' | 'notification' | 'global';
+
+export interface CopilotThread {
+  id: string;
+  title: string;
+  context_type: CopilotContextType;
+  context_ref: string | null;
+  created_at: string;
+  last_message_at: string;
+}
+
+export interface CopilotMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  degraded?: boolean;
+  guard_approved?: boolean;
+  created_at: string;
+}
+
+export const copilot = {
+  listThreads: () => api.get<{ data: CopilotThread[] }>('/v1/copilot/threads'),
+  getThread: (id: string) =>
+    api.get<{ data: { thread: CopilotThread; messages: CopilotMessage[] } }>(`/v1/copilot/threads/${id}`),
+  open: (context_type: CopilotContextType, context_ref?: string | null) =>
+    api.post<{ data: { thread: CopilotThread; messages: CopilotMessage[] } }>('/v1/copilot/threads', {
+      context_type,
+      context_ref: context_ref ?? null,
+    }),
+
+  /**
+   * Send a message and stream the guarded answer over SSE. onDelta receives
+   * each text chunk; the promise resolves when the `done` event arrives.
+   */
+  async stream(
+    threadId: string,
+    message: string,
+    onDelta: (text: string) => void,
+  ): Promise<{ id: string; degraded: boolean; guard_approved: boolean }> {
+    const res = await fetch(`/v1/copilot/threads/${threadId}/stream`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message }),
+    });
+    if (!res.ok || !res.body) {
+      const text = await res.text().catch(() => '');
+      throw new ApiError(
+        text ? JSON.parse(text) : { type: 'unknown', title: res.statusText, status: res.status, trace_id: 'n/a' },
+      );
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let done = { id: '', degraded: false, guard_approved: true };
+    for (;;) {
+      const { value, done: finished } = await reader.read();
+      if (finished) break;
+      buffer += decoder.decode(value, { stream: true });
+      const events = buffer.split('\n\n');
+      buffer = events.pop() ?? '';
+      for (const evt of events) {
+        const isDone = evt.includes('event: done');
+        const dataLine = evt.split('\n').find((l) => l.startsWith('data: '));
+        if (!dataLine) continue;
+        const payload = JSON.parse(dataLine.slice(6));
+        if (isDone) done = payload;
+        else if (payload.delta) onDelta(payload.delta);
+      }
+    }
+    return done;
+  },
+};
+
 export interface Me {
   id: string;
   email: string;

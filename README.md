@@ -27,7 +27,10 @@ structurally require.
   [`docs/enabling-anthropic.md`](docs/enabling-anthropic.md). Includes the
   deterministic **Relevance Ranker** (§18.3, `@atlas/relevance`): persona-default
   + user-override weights, the exact 9-term formula, weekly persona budgets
-  enforced at dispatch. Deferred within 4b: Copilot (§11.2).
+  enforced at dispatch. And the **Copilot** (§11.2): an ambient ⌘K assistant
+  that always operates on the context you are viewing (a security, portfolio, or
+  notification), with threads, SSE streaming, tool-use through the provider, and
+  conversational refusal evals — all behind the same Guard.
 
 ## Layout
 
@@ -43,7 +46,7 @@ services/workers         event-bus workers: brief generation (now narrated), not
 services/intelligence/runtime   LlmProvider boundary, fixture + Anthropic providers, runAgent loop, cache, ceilings, tracing, prompt registry
 services/intelligence/guard     stateless 3-layer Compliance Guard (structural, lexical, classifier) + guardText for narration
 services/intelligence/egress    sole constructor of UserFacingContent + renderNarration; the Guard's only caller
-services/intelligence/agents    Layer-1 specialists + Red Team, Layer-2 PSA, static-plan orchestrator, narration
+services/intelligence/agents    Layer-1 specialists + Red Team, Layer-2 PSA, static-plan orchestrator, narration, Copilot
 apps/api                 Fastify API: auth (Argon2id, jurisdiction gate), portfolios, transactions,
                          CSV import with mapping, exposure & performance endpoints (problem+json, trace_id)
 apps/web                 React UI: auth, portfolios, positions, exposure (unknown slice + provenance),

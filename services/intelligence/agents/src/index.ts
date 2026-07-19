@@ -23,6 +23,16 @@ export {
 } from './specialists.js';
 export { runPsa, type PsaResult } from './psa.js';
 export { narrate, type NarrateInput, type NarrateResult } from './narration.js';
+export {
+  buildCopilotContext,
+  answerCopilot,
+  CopilotContextError,
+  type CopilotContext,
+  type CopilotContextRef,
+  type CopilotContextType,
+  type CopilotTurnInput,
+  type CopilotTurnResult,
+} from './copilot.js';
 // Re-export the trace-id minter so API surfaces can correlate a whole request
 // tree without taking a direct dependency on @atlas/runtime internals.
 export { newTraceId } from '@atlas/runtime';
@@ -39,5 +49,6 @@ export {
   RED_TEAM,
   PSA,
   NARRATOR,
+  COPILOT,
   REGISTERED,
 } from './prompts.js';

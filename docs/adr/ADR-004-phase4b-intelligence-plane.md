@@ -109,13 +109,40 @@ interruptions are suppressed (still in the inbox / Weekly Review, §28.3). Ranki
 is deterministic (score DESC, id ASC tie-break). Unit tests cover the formula and
 budget enforcement; an integration test covers the weekly-budget suppression path.
 
+## Copilot (§11.2, added post-initial-4b)
+
+Implemented as an AMBIENT capability, not a chatbot screen. A thread is opened
+FROM a place in the app (a security, a portfolio, a notification); the server
+loads that context (`buildCopilotContext`) so the very first turn already speaks
+to what the user is viewing — the user never restates their context. The
+dedicated Copilot page is only conversation history.
+
+- Persistence: `copilot_threads` (context binding) + append-only
+  `copilot_messages` (migration 014).
+- Generation reuses `runAgent` (provider-agnostic, personal → never cached,
+  traced + cost-metered) with a `copilot` prompt that has its own doctrine
+  (context-grounded, provenanced inline numerals allowed, directive ban kept).
+  Three non-model gates, same discipline as narration: grounded fallback,
+  numeral-preservation against the loaded context, and the egress Guard.
+- Tool-use through the provider: a bounded read-only tool loop (context
+  lookups); a no-op under the fixture, exercised by a custom-provider test.
+- SSE streaming: the answer is generated AND guarded first, then streamed — the
+  server never streams content that has not passed the Guard.
+- Refusal evals (§48.5's conversational attacks, deferred from 4a because they
+  attacked a Copilot that did not exist): adversarial providers proving a
+  directive/rating/prediction is guard-rejected to a safe refusal and an
+  invented figure degrades to the grounded fallback.
+- Web: a global ⌘K element on every authed surface, context-aware via a React
+  subject registry (each view registers what it is showing); the Copilot page
+  lists threads. Verified live in the browser (⌘K → context-bound overlay →
+  SSE-streamed answer).
+
 ## Deliberately deferred (remainder of Phase 4b)
 
-Copilot (§11.2 — ambient ⌘K everywhere, context preloading, threads, SSE
-streaming, tool-use through the provider, refusal evals). The regeneration loop
-(guard rejection → regenerate ≤2 → degrade, §21.6) is partially present: the PSA
-degrades to a guaranteed-clean safe doc on rejection; the bounded-retry step is
-a fixture no-op today (the mock is deterministic) and lands with the live model.
+The regeneration loop (guard rejection → regenerate ≤2 → degrade, §21.6) is
+partially present: the PSA degrades to a guaranteed-clean safe doc on rejection;
+the bounded-retry step is a fixture no-op today (the mock is deterministic) and
+lands with the live model.
 
 ## Verification
 
