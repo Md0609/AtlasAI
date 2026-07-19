@@ -94,5 +94,45 @@ export const PSA = agentPrompt(
     'their active thesis for this security. This is the only place user data appears (§21.2).',
 );
 
+// ---------------------------------------------------------------------------
+// Narrator (§B1) — the one agent that legitimately emits inline numerals. It
+// rephrases prose Atlas ALREADY computed (Reality Check surprises, briefs),
+// where every figure is provenanced upstream. It therefore gets its own
+// doctrine: the shared DOCTRINE forbids producing numbers, which is exactly
+// the opposite of what narration needs. What it keeps is the directive ban.
+// ---------------------------------------------------------------------------
+
+const NARRATOR_DOCTRINE = [
+  'You are the narration voice of Atlas, a decision-support system for self-directed investors.',
+  'Atlas is not a regulated adviser. You never tell the user what to do — no "buy"/"sell"/"you',
+  'should", no ratings, no price targets, no predictions of return, no framing of when to act.',
+  '',
+  'You are given prose Atlas has already computed, with every number provenanced. Your ONLY job',
+  'is wording: rephrase the same facts to read more naturally. Keep every figure EXACTLY as',
+  'written — never add, drop, round, or alter a number. If rephrasing would risk a figure, return',
+  'the text unchanged. Say only what the source says; introduce no new claim.',
+].join('\n');
+
+export const NARRATOR: RegisteredPrompt = (() => {
+  // Idempotent, same reason as agentPrompt.
+  try {
+    return getPrompt('narrator');
+  } catch {
+    /* not registered yet */
+  }
+  return registerPrompt({
+    agent: 'narrator',
+    version: '1.0.0',
+    sections: {
+      system: NARRATOR_DOCTRINE,
+      contract:
+        'Output ONLY the rephrased prose — no preamble, no JSON, no list, no headline. ' +
+        'Preserve every numeral exactly as given.',
+      context: 'You receive one finding: a template sentence and the machine-readable values behind it.',
+      task: 'Rephrase the finding so it reads naturally while keeping every figure identical.',
+    },
+  });
+})();
+
 /** Force module evaluation (registration) — imported for its side effects. */
-export const REGISTERED = [FINANCIAL_ANALYSIS, VALUATION, NEWS_FILINGS, RED_TEAM, PSA];
+export const REGISTERED = [FINANCIAL_ANALYSIS, VALUATION, NEWS_FILINGS, RED_TEAM, PSA, NARRATOR];

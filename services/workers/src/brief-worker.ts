@@ -3,8 +3,14 @@
  *
  * Briefs are deterministic templates over stored values (§B8: "shippable,
  * not throwaway — remains the degradation path under load/outage forever").
- * Every numeral in a brief is a computed value carried in values_json; no
- * LLM exists anywhere in this path.
+ * Every numeral in a brief is a computed value carried in values_json.
+ *
+ * Phase 4b (§B1): a model may narrate the template body behind the Guard —
+ * user quotes masked, every figure preserved — with the template as the
+ * permanent degradation path. Under the mock provider the narrated body is the
+ * template verbatim, so nothing about delivery or determinism changes; the
+ * real provider is a drop-in (ATLAS_LLM_PROVIDER) and degrades to the template
+ * on any failure, refusal, numeral drift, or guard rejection.
  *
  * Dispatch discipline (§24.3, §18.6):
  *   1. dedup-insert (exactly-once user-visible effect) — conflict ⇒ suppress;
@@ -21,6 +27,41 @@ import { createHash } from 'node:crypto';
 import type pg from 'pg';
 import { enqueue, type Job } from '@atlas/bus';
 import { dec } from '@atlas/domain';
+import { narrate, newTraceId } from '@atlas/agents';
+
+interface BriefNarration {
+  traceId: string;
+  model: string;
+  degraded: boolean;
+}
+
+/**
+ * Narrate a brief body behind the Guard, degrading to the template on any
+ * failure. Never throws: a brief must always be generatable (§B8), so a
+ * narration fault falls back to the deterministic template, not an error.
+ */
+async function narrateBriefBody(
+  pool: pg.Pool,
+  userId: string,
+  template: string,
+  quotedSpans: string[],
+  facts: Record<string, string | number>,
+): Promise<{ body: string; narration: BriefNarration }> {
+  const traceId = newTraceId();
+  try {
+    const n = await narrate(pool, {
+      userId,
+      surface: 'brief',
+      template,
+      facts,
+      quotedSpans: quotedSpans.filter((q) => q && q.length > 0),
+      traceId,
+    });
+    return { body: n.text, narration: { traceId, model: n.model, degraded: n.degraded } };
+  } catch {
+    return { body: template, narration: { traceId, model: 'template', degraded: true } };
+  }
+}
 
 // ---------------------------------------------------------------------------
 // brief.generate — {fireId | ruleId+kind:'rule_breach'} + userId
@@ -82,6 +123,16 @@ async function generateRadarFireBrief(pool: pg.Pool, userId: string, fireId: str
   }
 
   const tone = await toneFor(pool, userId, fire.security_id);
+
+  // §B1: narrate behind the Guard. The user's own words (thesis + condition)
+  // are masked so their phrasing can't trip the directive screen; every figure
+  // is preserved. Template on any degradation.
+  const quoted = isThesis ? [fire.statement, fire.condition_nl] : [fire.condition_nl];
+  const { body: narratedBody, narration } = await narrateBriefBody(pool, userId, body, quoted, {
+    observed: observed.value ?? '—',
+    target: observed.target ?? '—',
+  });
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -94,10 +145,10 @@ async function generateRadarFireBrief(pool: pg.Pool, userId: string, fireId: str
         fire.fire_id,
         fire.security_id,
         headline,
-        body,
+        narratedBody,
         tone,
         JSON.stringify({ observed: observed.value, target: observed.target }),
-        JSON.stringify({ radar_id: fire.radar_id, fire_id: fire.fire_id, observed: fire.observed }),
+        JSON.stringify({ radar_id: fire.radar_id, fire_id: fire.fire_id, observed: fire.observed, narration }),
       ],
     );
     await client.query(`UPDATE radar_fires SET brief_id = $2 WHERE id = $1::bigint`, [
@@ -147,6 +198,11 @@ async function generateRuleBreachBrief(pool: pg.Pool, userId: string, ruleId: st
     `Nothing is blocked and nothing is urgent. Rules can be changed — deliberately, with a ` +
     `reason — but they shouldn't drift.`;
 
+  const { body: narratedBody, narration } = await narrateBriefBody(pool, userId, body, [rule.stated_reason], {
+    value: observed.value ?? '—',
+    limit: observed.limit ?? '—',
+  });
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -157,9 +213,9 @@ async function generateRuleBreachBrief(pool: pg.Pool, userId: string, ruleId: st
         userId,
         ruleId,
         headline,
-        body,
+        narratedBody,
         JSON.stringify({ value: observed.value ?? null, limit: observed.limit ?? null }),
-        JSON.stringify({ rule_id: ruleId, observed }),
+        JSON.stringify({ rule_id: ruleId, observed, narration }),
       ],
     );
     await enqueue(client, 'notify.dispatch', userId, { briefId: briefRows[0].id, userId });

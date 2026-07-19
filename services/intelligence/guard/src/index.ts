@@ -42,6 +42,34 @@ export function guardCheck(input: GuardInput): GuardVerdict {
   };
 }
 
+/**
+ * guardText — the directive/recommendation screen for NARRATED PROSE (briefs,
+ * Reality Check) whose numbers were computed deterministically upstream and
+ * carry provenance already. It runs layers 2 and 3 (lexical + classifier) but
+ * NOT the structural "numbers must be references" check — that check is for
+ * the ContextualizationDoc, where the PSA assembles prose around signal refs.
+ * Free-text narration legitimately contains provenanced numerals.
+ *
+ * This is not a bypass of the doc guard: narrated surfaces have no
+ * UserFacingContent to construct; they are template text a model may rephrase,
+ * and the one thing that must never leak — a directive/rating/prediction — is
+ * exactly what lexical + classifier catch.
+ */
+export function guardText(rendered: LexicalInputSegment[]): GuardVerdict {
+  const started = performance.now();
+  const violations = [...lexicalScreen(rendered)];
+  const clf = classifyRecommendation(rendered);
+  violations.push(...clf.violations);
+  return {
+    approved: violations.length === 0,
+    violations,
+    rulesetVersion: LEXICAL_RULESET_VERSION,
+    classifierVersion: CLASSIFIER_VERSION,
+    classifierScore: String(clf.score),
+    latencyMs: Math.round(performance.now() - started),
+  };
+}
+
 export { LEXICAL_RULES, LEXICAL_RULESET_VERSION, lexicalScreen } from './lexical.js';
 export type { LexicalInputSegment } from './lexical.js';
 export { structuralCheck, textHasNumerals } from './structural.js';

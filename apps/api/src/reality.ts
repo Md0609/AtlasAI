@@ -15,7 +15,8 @@ import {
   inferStrategy,
   type ReturnSeriesInput,
 } from '@atlas/signal-engine';
-import type { Strategy } from '@atlas/contracts';
+import type { Strategy, Surprise } from '@atlas/contracts';
+import { narrate, newTraceId } from '@atlas/agents';
 import { requireUser } from './auth.js';
 import { problem } from './http.js';
 import { ownedPortfolio } from './portfolios.js';
@@ -91,9 +92,36 @@ export function registerRealityRoutes(app: FastifyInstance, pool: pg.Pool): void
       baseCurrency: p.base_currency,
     });
 
+    // LLM narration (§B1) — rephrase each surprise body behind the Guard, with
+    // the template as the degradation path. Deterministic under the mock; the
+    // real provider is a drop-in (ATLAS_LLM_PROVIDER). Numbers stay provenanced:
+    // narrate() rejects any narration that introduces or alters a figure.
+    const traceId = newTraceId();
+    let narrationDegraded = false;
+    let narrationModel = 'template';
+    const narratedTop: Surprise[] = await Promise.all(
+      result.top.map(async (s) => {
+        try {
+          const n = await narrate(pool, {
+            userId: user.id,
+            surface: 'reality_check',
+            template: s.body,
+            facts: s.values,
+            traceId,
+          });
+          narrationModel = n.model;
+          if (n.degraded) narrationDegraded = true;
+          return { ...s, body: n.text };
+        } catch {
+          narrationDegraded = true; // never let narration break the deterministic result
+          return s;
+        }
+      }),
+    );
+
     return reply.send({
       data: {
-        top: result.top,
+        top: narratedTop,
         others: result.others,
         total_value_base: signals.totalValueBase,
         base_currency: signals.baseCurrency,
@@ -112,6 +140,13 @@ export function registerRealityRoutes(app: FastifyInstance, pool: pg.Pool): void
           pricesAsOf: signals.pricesAsOf,
           fxAsOf: signals.fxAsOf,
           holdingsAsOf: signals.holdingsAsOf,
+        },
+        narration: {
+          traceId,
+          model: narrationModel,
+          // Every figure remains engine-computed; the model only rephrases, and
+          // any narration that drifts on a number degrades to the template.
+          degraded: narrationDegraded,
         },
       },
       staleness: {

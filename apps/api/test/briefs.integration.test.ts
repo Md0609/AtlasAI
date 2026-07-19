@@ -150,6 +150,22 @@ describe('M3: the deterministic money journey ends in a brief and an email', () 
     expect(c0.body).toContain('140'); // observed value — computed, not generated
     expect(c0.thesis_id).toBeTruthy();
 
+    // §B1: the body went through narration behind the Guard; provenance records
+    // it. Under the mock the body is the template verbatim (so the verbatim
+    // quotes above still hold) and narration did not degrade.
+    const { rows: prov } = await pool.query(
+      `SELECT provenance->'narration' AS narration FROM briefs WHERE id = $1`,
+      [c0.id],
+    );
+    expect(prov[0].narration).toBeTruthy();
+    expect(prov[0].narration.model).toBeTruthy();
+    expect(prov[0].narration.degraded).toBe(false);
+    // The narration was screened and recorded as a guard decision.
+    const { rows: gd } = await pool.query(
+      `SELECT count(*)::int AS n FROM guard_decisions WHERE (generator->>'agent') = 'narrator'`,
+    );
+    expect(gd[0].n).toBeGreaterThan(0);
+
     const { rows: mail } = await pool.query(`SELECT to_email, subject, body_text FROM email_outbox`);
     expect(mail.length).toBe(1);
     expect(mail[0].to_email).toBe('briefs@example.es');
