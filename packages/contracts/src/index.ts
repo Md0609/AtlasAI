@@ -656,3 +656,61 @@ export interface StalenessBlock {
   fx_as_of: IsoDate | null;
   holdings_as_of: IsoDate | null;
 }
+
+// ---------------------------------------------------------------------------
+// Relevance scoring (§18.3) — the deterministic ranking model. Independent of
+// the LLM provider by construction: pure arithmetic over normalized features.
+// ---------------------------------------------------------------------------
+
+/**
+ * A persona is the user's strategy classification (§6.1). It selects the
+ * default relevance weights and the weekly notification budget. Derived from
+ * the profile's stated strategy, falling back to inferred, then 'unknown'.
+ */
+export type Persona = Strategy;
+
+/**
+ * The nine relevance inputs (§18.3). Each is normalized to [0, 1] as a decimal
+ * string; normalization is the caller's job (feature extraction), so the scorer
+ * stays a pure weighted sum and is unit-testable in isolation.
+ */
+export interface RelevanceFeatures {
+  materiality: DecimalString;
+  positionWeight: DecimalString;
+  thesisLinkage: DecimalString;
+  ruleLinkage: DecimalString;
+  strategyLinkage: DecimalString;
+  novelty: DecimalString;
+  actionability: DecimalString;
+  noisePrior: DecimalString;
+  recentVolume: DecimalString;
+}
+
+/**
+ * The nine weights (§18.3): w1..w7 are additive, w8..w9 are subtracted (their
+ * sign is applied by the scorer, so weights are stored as positive magnitudes).
+ */
+export interface RelevanceWeights {
+  w1: DecimalString; // materiality
+  w2: DecimalString; // positionWeight
+  w3: DecimalString; // thesisLinkage
+  w4: DecimalString; // ruleLinkage
+  w5: DecimalString; // strategyLinkage
+  w6: DecimalString; // novelty
+  w7: DecimalString; // actionability
+  w8: DecimalString; // noisePrior   (subtracted)
+  w9: DecimalString; // recentVolume (subtracted)
+}
+
+/** A candidate interruption to be scored/ranked; `id` is the stable tie-break. */
+export interface RelevanceCandidate {
+  id: string;
+  features: RelevanceFeatures;
+}
+
+export interface ScoredCandidate extends RelevanceCandidate {
+  score: DecimalString;
+}
+
+/** Weekly notification budget per persona (§18.3 "weekly notification budgets"). */
+export type WeeklyBudget = Record<Persona, number>;

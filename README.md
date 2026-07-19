@@ -24,8 +24,10 @@ structurally require.
   & Briefs behind the Guard):
   [`docs/adr/ADR-004-phase4b-intelligence-plane.md`](docs/adr/ADR-004-phase4b-intelligence-plane.md).
   Enabling the real model is one env var + a key —
-  [`docs/enabling-anthropic.md`](docs/enabling-anthropic.md). Deferred within
-  4b: Copilot (§11.2) and the heuristic Relevance Ranker (§18.3).
+  [`docs/enabling-anthropic.md`](docs/enabling-anthropic.md). Includes the
+  deterministic **Relevance Ranker** (§18.3, `@atlas/relevance`): persona-default
+  + user-override weights, the exact 9-term formula, weekly persona budgets
+  enforced at dispatch. Deferred within 4b: Copilot (§11.2).
 
 ## Layout
 
@@ -34,6 +36,7 @@ packages/contracts       shared types: canonical records, events, signal values
 packages/domain          decimal money (34-digit, banker's rounding), dates, canonical hashing
 packages/schema          SQL migrations + migration runner (identity, security master, market data, portfolio)
 packages/dataplane       DB→engine loaders (breaks the api→agents cycle; depends on the engine only)
+packages/relevance       deterministic Relevance Ranker (§18.3): scoring formula, persona weights, weekly budgets — LLM-independent
 services/ingest          vendor adapter boundary, mock vendor with injected defects, pipeline, quality checks
 services/signal-engine   deterministic Signal Engine v1 + golden/adversarial/property tests
 services/workers         event-bus workers: brief generation (now narrated), notification dispatch

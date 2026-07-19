@@ -90,11 +90,26 @@ a **drop-in** when an EU-inference / zero-retention key is procured (§45.4).
   model, same vendor). The §21.6 L4 cross-*family* judge needs a second provider
   behind the same interface — a provider addition, not a business-layer change.
 
+## Relevance Ranker (§18.3, added post-initial-4b)
+
+Implemented exactly as specified: a pure, deterministic, LLM-independent scoring
+engine (`@atlas/relevance`) computing
+`w1·materiality + w2·position_weight + w3·thesis_linkage + w4·rule_linkage +
+w5·strategy_linkage + w6·novelty + w7·actionability − w8·noise_prior −
+w9·recent_volume`. Weights are configurable with **persona-specific defaults**
+(persona = the §6.1 strategy) and **user-specific learned overrides** (migration
+013 `relevance_weight_overrides`, merged on top of the default at resolve time).
+Each persona has a **weekly notification budget**, enforced at dispatch
+alongside the §18.6 2/day cap: once the week's non-C0 allowance is spent, further
+interruptions are suppressed (still in the inbox / Weekly Review, §28.3). Ranking
+is deterministic (score DESC, id ASC tie-break). Unit tests cover the formula and
+budget enforcement; an integration test covers the weekly-budget suppression path.
+
 ## Deliberately deferred (remainder of Phase 4b)
 
-Copilot (§11.2 — threads, SSE streaming, tool-use through the provider, refusal
-evals) and the heuristic Relevance Ranker (§18.3). The regeneration loop (guard
-rejection → regenerate ≤2 → degrade, §21.6) is partially present: the PSA
+Copilot (§11.2 — ambient ⌘K everywhere, context preloading, threads, SSE
+streaming, tool-use through the provider, refusal evals). The regeneration loop
+(guard rejection → regenerate ≤2 → degrade, §21.6) is partially present: the PSA
 degrades to a guaranteed-clean safe doc on rejection; the bounded-retry step is
 a fixture no-op today (the mock is deterministic) and lands with the live model.
 
