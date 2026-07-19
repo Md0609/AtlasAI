@@ -137,12 +137,27 @@ dedicated Copilot page is only conversation history.
   lists threads. Verified live in the browser (⌘K → context-bound overlay →
   SSE-streamed answer).
 
+## Regeneration loop (§21.6, added post-initial-4b)
+
+Completed exactly as defined: guard rejection → regenerate ≤2 → degrade. A
+shared, provider-agnostic helper (`withRegeneration`) runs the generate-then-
+guard cycle up to three times (initial + 2 regenerations), feeding the SPECIFIC
+violations back into each retry (`correctionForViolations` — which is why the
+Guard reports every violation). Wired into the PSA: on rejection it regenerates
+with the correction; only after the budget is spent does it degrade to the
+guaranteed-clean safe doc. Every attempt is a real, traced generation whose
+verdict is recorded with its `regenerated` index (guard_decisions column, now
+written through egress). Under the fixture the first attempt is guard-clean so
+the loop never regenerates; tests drive it with providers that fail on purpose,
+covering retry, the retry limit, violation feedback, and the deterministic
+degrade.
+
 ## Deliberately deferred (remainder of Phase 4b)
 
-The regeneration loop (guard rejection → regenerate ≤2 → degrade, §21.6) is
-partially present: the PSA degrades to a guaranteed-clean safe doc on rejection;
-the bounded-retry step is a fixture no-op today (the mock is deterministic) and
-lands with the live model.
+Nothing outstanding from the ADR-003 Phase-4b list — provider boundary,
+specialists + Red Team + PSA, shared cache, narration, Relevance Ranker,
+Copilot, and the regeneration loop are all implemented on the fixture, with the
+Anthropic provider a documented drop-in.
 
 ## Verification
 
