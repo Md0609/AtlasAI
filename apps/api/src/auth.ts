@@ -16,6 +16,19 @@ import { problem } from './http.js';
 const SESSION_COOKIE = 'atlas_session';
 const SESSION_TTL_DAYS = 7;
 
+/**
+ * The session cookie is `Secure` by default in production, so the browser
+ * refuses to send it over plaintext HTTP. Local development and the test suite
+ * run over HTTP, hence the NODE_ENV default; ATLAS_COOKIE_SECURE overrides it
+ * explicitly either way (e.g. 'true' when running behind TLS in staging).
+ * Read per call so a deployment (or a test) can set it without a rebuild.
+ */
+function cookieSecure(): boolean {
+  return process.env.ATLAS_COOKIE_SECURE !== undefined
+    ? process.env.ATLAS_COOKIE_SECURE === 'true'
+    : process.env.NODE_ENV === 'production';
+}
+
 export interface AuthedUser {
   id: string;
   email: string;
@@ -87,8 +100,23 @@ const loginSchema = z.object({
   password: z.string(),
 });
 
+/**
+ * Per-IP limits on the credential endpoints. These are the brute-force /
+ * credential-stuffing surface: everything else behind them needs a session.
+ * Deliberately generous enough for a human who mistypes a password, tight
+ * enough that an attacker cannot grind. Overridable per deployment; a
+ * multi-instance deployment should move the store to Redis (the plugin
+ * supports it) so the limit is global rather than per process.
+ */
 export function registerAuthRoutes(app: FastifyInstance, pool: pg.Pool): void {
-  app.post('/v1/auth/register', async (req, reply) => {
+  // Read at registration (not module load) so a deployment — or a test — can
+  // set the limits before the server is built.
+  const LOGIN_LIMIT = Number(process.env.ATLAS_RATE_LIMIT_LOGIN ?? 20);
+  const REGISTER_LIMIT = Number(process.env.ATLAS_RATE_LIMIT_REGISTER ?? 10);
+
+  app.post('/v1/auth/register', {
+    config: { rateLimit: { max: REGISTER_LIMIT, timeWindow: '1 hour' } },
+  }, async (req, reply) => {
     const parsed = registerSchema.safeParse(req.body);
     if (!parsed.success) {
       return problem(reply, req, 400, 'validation', 'Invalid registration payload', parsed.error.issues[0]?.message);
@@ -133,7 +161,9 @@ export function registerAuthRoutes(app: FastifyInstance, pool: pg.Pool): void {
     }
   });
 
-  app.post('/v1/auth/login', async (req, reply) => {
+  app.post('/v1/auth/login', {
+    config: { rateLimit: { max: LOGIN_LIMIT, timeWindow: '15 minutes' } },
+  }, async (req, reply) => {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) {
       return problem(reply, req, 400, 'validation', 'Invalid login payload');
@@ -187,6 +217,7 @@ function setSessionCookie(reply: FastifyReply, token: string): void {
   reply.setCookie(SESSION_COOKIE, token, {
     path: '/',
     httpOnly: true,
+    secure: cookieSecure(),
     sameSite: 'lax',
     maxAge: SESSION_TTL_DAYS * 86_400,
   });

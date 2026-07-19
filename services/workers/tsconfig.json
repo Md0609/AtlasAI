@@ -25,9 +25,6 @@
       "path": "../signal-engine"
     },
     {
-      "path": "../../apps/api"
-    },
-    {
       "path": "../../packages/dataplane"
     },
     {
@@ -35,6 +32,9 @@
     },
     {
       "path": "../../packages/relevance"
+    },
+    {
+      "path": "../../packages/portfolio-core"
     }
   ]
 }

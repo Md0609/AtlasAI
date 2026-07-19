@@ -1,0 +1,18 @@
+{
+  "name": "@atlas/portfolio-core",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "dependencies": {
+    "@atlas/bus": "0.1.0",
+    "@atlas/contracts": "0.1.0",
+    "@atlas/dataplane": "0.1.0",
+    "@atlas/domain": "0.1.0",
+    "@atlas/signal-engine": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.10"
+  }
+}

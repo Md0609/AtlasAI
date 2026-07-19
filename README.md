@@ -31,6 +31,10 @@ structurally require.
   that always operates on the context you are viewing (a security, portfolio, or
   notification), with threads, SSE streaming, tool-use through the provider, and
   conversational refusal evals — all behind the same Guard.
+- Architectural review remediation (P1 — dependency direction: shared write
+  paths extracted to `@atlas/portfolio-core` so no library depends on an app;
+  auth hardening: `Secure` session cookie + rate-limited credential endpoints):
+  [`docs/adr/ADR-005-architectural-review-p1.md`](docs/adr/ADR-005-architectural-review-p1.md)
 
 ## Layout
 
@@ -40,6 +44,7 @@ packages/domain          decimal money (34-digit, banker's rounding), dates, can
 packages/schema          SQL migrations + migration runner (identity, security master, market data, portfolio)
 packages/dataplane       DB→engine loaders (breaks the api→agents cycle; depends on the engine only)
 packages/relevance       deterministic Relevance Ranker (§18.3): scoring formula, persona weights, weekly budgets — LLM-independent
+packages/portfolio-core  shared portfolio WRITE paths (rule evaluation + persistence + brief enqueue), used by both the API and the workers
 services/ingest          vendor adapter boundary, mock vendor with injected defects, pipeline, quality checks
 services/signal-engine   deterministic Signal Engine v1 + golden/adversarial/property tests
 services/workers         event-bus workers: brief generation (now narrated), notification dispatch

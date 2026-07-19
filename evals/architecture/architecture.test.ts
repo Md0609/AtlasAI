@@ -108,6 +108,45 @@ describe('§47.2 — values enforced by build failure', () => {
     }
   });
 
+  it('no library depends on an application — apps are leaves (dependency direction)', () => {
+    // A background worker that imports the HTTP app couples worker deploys to
+    // the API and drags Fastify into every consumer. Shared logic belongs in a
+    // package both sides depend on (@atlas/dataplane for reads,
+    // @atlas/portfolio-core for writes). devDependencies are exempt: an
+    // integration test may legitimately build the server.
+    const appPackages = new Set(
+      readdirSync(join(ROOT, 'apps')).map((d) => {
+        try {
+          return JSON.parse(read(join(ROOT, 'apps', d, 'package.json'))).name as string;
+        } catch {
+          return '';
+        }
+      }),
+    );
+    const offenders: string[] = [];
+    for (const base of ['packages', 'services']) {
+      const walk = (dir: string) => {
+        for (const entry of readdirSync(dir)) {
+          if (entry === 'node_modules' || entry === 'dist') continue;
+          const p = join(dir, entry);
+          if (!statSync(p).isDirectory()) continue;
+          const pkg = join(p, 'package.json');
+          try {
+            const json = JSON.parse(read(pkg));
+            for (const dep of Object.keys(json.dependencies ?? {})) {
+              if (appPackages.has(dep)) offenders.push(`${json.name} depends on ${dep}`);
+            }
+          } catch {
+            /* not a package dir — keep walking */
+          }
+          walk(p);
+        }
+      };
+      walk(join(ROOT, base));
+    }
+    expect(offenders, 'libraries must not depend on apps; extract the shared code into a package').toEqual([]);
+  });
+
   it('the API delivery layer never renders intelligence prose that skipped egress', () => {
     // At 4a no LLM output exists; the enforceable invariant today: nothing in
     // apps/ constructs Contextualization rendering by hand — apps may only

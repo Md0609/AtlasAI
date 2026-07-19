@@ -329,14 +329,22 @@ describe('C1 rule-breach briefs quote the stated reason (§14.6)', () => {
     // Seed 5 delivered interruptions in the CURRENT week. Bypass the 2/day
     // trigger for setup only — we are testing the WEEKLY gate, not the daily
     // one — and date them off today so the daily cap is a no-op at dispatch.
+    //
+    // Dates are computed in UTC, exactly as the dispatcher does
+    // (`new Date().toISOString().slice(0,10)`). Deriving them from Postgres
+    // `now()::date` instead would use the SERVER timezone, and between local
+    // midnight and UTC midnight the two disagree by a day — which would put the
+    // seeds on the dispatcher's today and trip the daily cap first.
+    const dayUtc = new Date().toISOString().slice(0, 10);
+    const prevDayUtc = new Date(Date.parse(`${dayUtc}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
     await pool.query(`ALTER TABLE notification_budget_ledger DISABLE TRIGGER notification_budget_trg`);
     try {
       for (let i = 0; i < 5; i++) {
         const bid = await mkBrief();
         await pool.query(
           `INSERT INTO notification_budget_ledger (user_id, brief_id, class, day_bucket, week_bucket)
-           VALUES ($1,$2,'C2', (now()::date - 1), date_trunc('week', now())::date)`,
-          [uid, bid],
+           VALUES ($1,$2,'C2', $3::date, date_trunc('week', $4::date)::date)`,
+          [uid, bid, prevDayUtc, dayUtc],
         );
       }
     } finally {

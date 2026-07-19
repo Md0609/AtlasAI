@@ -10,6 +10,7 @@
     "packages/bus",
     "packages/dataplane",
     "packages/relevance",
+    "packages/portfolio-core",
     "services/intelligence/guard",
     "services/intelligence/egress",
     "services/intelligence/runtime",

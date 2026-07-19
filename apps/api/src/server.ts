@@ -5,6 +5,7 @@
 import { randomUUID } from 'node:crypto';
 import Fastify, { type FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
+import rateLimit from '@fastify/rate-limit';
 import type pg from 'pg';
 import { loadUser, registerAuthRoutes } from './auth.js';
 import { registerBriefRoutes } from './briefs.js';
@@ -22,6 +23,10 @@ import { problem } from './http.js';
 export async function buildServer(pool: pg.Pool): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
   await app.register(cookie);
+  // Registered non-globally: only the routes that opt in via `config.rateLimit`
+  // are limited (today, the credential endpoints — the brute-force surface).
+  // Everything else is already behind a session.
+  await app.register(rateLimit, { global: false });
 
   app.decorateRequest('traceId', '');
   app.decorateRequest('user', null);
