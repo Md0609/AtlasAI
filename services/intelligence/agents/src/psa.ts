@@ -1,0 +1,263 @@
+/**
+ * Portfolio Strategy Agent (§22.11) — the Layer-2 chokepoint. Every finding
+ * passes through here before reaching a user; personalisation is a property of
+ * the system, not a feature of one output.
+ *
+ * The PSA builds a ContextualizationDoc: facts by signal reference, tensions
+ * anchored to the user's own rows (§28.2), the Red Team's countercase, and the
+ * honest unknown. It runs through runAgent (personal, NEVER cached — §40.4)
+ * and then through the egress module, the sole constructor of
+ * UserFacingContent, which runs the Guard. The mock's deterministic draft is
+ * guard-clean by construction; the real model's output is held to the same
+ * gate, and on rejection the orchestrator degrades to the template.
+ */
+import { inputHash } from '@atlas/domain';
+import type {
+  ContextConfidence,
+  ContextSection,
+  ContextSignalValue,
+  ContextualizationDoc,
+  Finding,
+  SecurityContext,
+} from '@atlas/contracts';
+import { getPrompt, getProvider, runAgent, type LlmProvider } from '@atlas/runtime';
+import type { Db } from '@atlas/dataplane';
+import {
+  isRejected,
+  makePgGuardRecorder,
+  makePgQuoteVerifier,
+  renderUserFacingContent,
+  type EgressResult,
+} from '@atlas/egress';
+import { buildUserBundle, mergeSignals, type UserBundle } from './context.js';
+
+const CONCENTRATION_RULES = new Set(['max_single_name', 'max_sector', 'min_cash', 'max_cash', 'max_positions']);
+
+export interface PsaResult {
+  doc: ContextualizationDoc;
+  egress: EgressResult;
+  model: string;
+  degraded: boolean;
+}
+
+export async function runPsa(
+  db: Db,
+  userId: string,
+  baseCurrency: string,
+  security: SecurityContext,
+  findings: Finding[],
+  opts: { traceId: string; parentSpanId?: string; provider?: LlmProvider },
+): Promise<PsaResult> {
+  const user = await buildUserBundle(db, userId, baseCurrency, security.securityId);
+  const signals = mergeSignals(security, user);
+  const draft = buildDraftDoc(userId, security, findings, user, signals);
+
+  const prompt = getPrompt('psa');
+  const ih = inputHash({
+    agent: 'psa',
+    promptHash: prompt.hash,
+    userId,
+    security: security.securityId,
+    findings: findings.map((f) => [f.kind, f.statement]),
+    rules: user.rules.map((r) => [r.id, r.status]),
+    thesis: user.thesis?.id ?? null,
+    met: user.metConditions.map((c) => c.id),
+  });
+
+  const result = await runAgent(db, {
+    agent: 'psa',
+    tier: 'mid',
+    userId, // personal — never cached (§40.4)
+    system: prompt.sections.system,
+    messages: [{ role: 'user', content: buildTask(security, findings) }],
+    maxTokens: 2000,
+    jsonOutput: true,
+    fallback: { text: JSON.stringify(draft) },
+    promptVersion: prompt.version,
+    promptHash: prompt.hash,
+    inputHash: ih,
+    surface: 'contextualize',
+    traceId: opts.traceId,
+    parentSpanId: opts.parentSpanId,
+    provider: opts.provider ?? getProvider(),
+  });
+
+  const doc = parseDoc(result.text, draft);
+  const egress = await renderUserFacingContent(doc, {
+    verifyQuote: makePgQuoteVerifier(db),
+    recordDecision: makePgGuardRecorder(db),
+  });
+
+  // §21.6: on guard rejection, degrade to a minimal, guaranteed-clean doc
+  // (facts + unknown only, no user quotes) rather than surface nothing.
+  if (isRejected(egress)) {
+    const safe = buildSafeDoc(userId, security, findings, signals);
+    const safeEgress = await renderUserFacingContent(safe, {
+      verifyQuote: makePgQuoteVerifier(db),
+      recordDecision: makePgGuardRecorder(db),
+    });
+    return { doc: safe, egress: safeEgress, model: result.model, degraded: true };
+  }
+
+  return { doc, egress, model: result.model, degraded: result.degraded };
+}
+
+function buildTask(security: SecurityContext, findings: Finding[]): string {
+  return (
+    `Contextualise ${security.name} for this user.\n` +
+    `Findings:\n${findings.map((f) => `- [${f.kind}] ${f.statement}`).join('\n')}`
+  );
+}
+
+function buildDraftDoc(
+  userId: string,
+  security: SecurityContext,
+  findings: Finding[],
+  user: UserBundle,
+  signals: Record<string, ContextSignalValue>,
+): ContextualizationDoc {
+  const sections: ContextSection[] = [];
+
+  // Facts from the specialist findings (prose only — numbers stay refs).
+  for (const f of findings.filter((x) => x.agent !== 'red_team')) {
+    sections.push({ type: 'fact', spans: [{ kind: 'text', text: f.statement }] });
+  }
+
+  // A fact that actually renders a number by reference (US-AI-02).
+  if (signals['portfolio.look_through_weight']) {
+    sections.push({
+      type: 'fact',
+      spans: [
+        { kind: 'text', text: 'Your look-through exposure to this name is ' },
+        { kind: 'signal', signalId: 'portfolio.look_through_weight', format: 'percent', dp: 1 },
+        { kind: 'text', text: ' of your portfolio.' },
+      ],
+    });
+  }
+
+  // T1 tensions: each breached concentration rule, anchored + quoted (§28.2/§14.6).
+  for (const r of user.rules) {
+    if (r.status === 'breach' && CONCENTRATION_RULES.has(r.ruleType)) {
+      sections.push({
+        type: 'tension',
+        tensionType: 'T1',
+        anchor: { table: 'rules', id: r.id },
+        spans: [
+          { kind: 'text', text: 'This sits against a rule you set for yourself. When you set it, you wrote: ' },
+          {
+            kind: 'user_quote',
+            text: r.statedReason,
+            source: { table: 'rules', id: r.id, column: 'stated_reason' },
+          },
+        ],
+      });
+    }
+  }
+
+  // T2 tensions: met falsification conditions, anchored to the thesis (§6.2).
+  for (const c of user.metConditions) {
+    sections.push({
+      type: 'tension',
+      tensionType: 'T2',
+      anchor: { table: 'theses', id: c.thesisId },
+      spans: [
+        { kind: 'text', text: 'Your own falsification condition is met. You wrote: ' },
+        {
+          kind: 'user_quote',
+          text: c.conditionNl,
+          source: { table: 'thesis_conditions', id: c.id, column: 'condition_nl' },
+        },
+      ],
+    });
+  }
+
+  // Countercase from the Red Team.
+  const bear = findings.find((f) => f.agent === 'red_team');
+  if (bear) {
+    sections.push({ type: 'countercase', spans: [{ kind: 'text', text: bear.statement }] });
+  }
+
+  // The honest unknown (never collapsed — §10.2 L6).
+  sections.push({
+    type: 'unknown',
+    spans: [
+      {
+        kind: 'text',
+        text:
+          'What Atlas cannot tell you: whether the load-bearing assumption in the bear case holds. ' +
+          'That is the whole question, and it is not answerable from the figures on record.',
+      },
+    ],
+  });
+
+  const confidence: ContextConfidence = {
+    level: findings.some((f) => f.confidence === 'insufficient') ? 'low' : 'medium',
+    basis: [
+      {
+        kind: 'text',
+        text: 'Based on the figures on record for this security together with your own stated rules and thesis.',
+      },
+    ],
+    whatWouldChangeIt: [
+      'The next quarterly filing for this security',
+      'A change you make to your own rules or thesis',
+    ],
+  };
+
+  return {
+    userId,
+    subject: { scope: 'security', securityId: security.securityId },
+    sections,
+    confidence,
+    signals,
+    generator: { agent: 'psa', promptVersion: '1.0.0', model: 'fixture' },
+  };
+}
+
+/** Minimal, guaranteed guard-clean doc: no user quotes, no directive surface. */
+function buildSafeDoc(
+  userId: string,
+  security: SecurityContext,
+  findings: Finding[],
+  signals: Record<string, ContextSignalValue>,
+): ContextualizationDoc {
+  const sections: ContextSection[] = findings
+    .filter((f) => f.agent !== 'red_team')
+    .map((f) => ({ type: 'fact' as const, spans: [{ kind: 'text' as const, text: f.statement }] }));
+  sections.push({
+    type: 'unknown',
+    spans: [{ kind: 'text', text: 'Atlas is showing only the facts it can source for this security.' }],
+  });
+  return {
+    userId,
+    subject: { scope: 'security', securityId: security.securityId },
+    sections,
+    confidence: {
+      level: 'low',
+      basis: [{ kind: 'text', text: 'Reduced to sourced facts after a compliance check.' }],
+      whatWouldChangeIt: ['A fresh analysis pass'],
+    },
+    signals,
+    generator: { agent: 'psa.safe', promptVersion: '1.0.0', model: 'template' },
+  };
+}
+
+function parseDoc(text: string, draft: ContextualizationDoc): ContextualizationDoc {
+  try {
+    const parsed = JSON.parse(text) as ContextualizationDoc;
+    if (
+      parsed &&
+      Array.isArray(parsed.sections) &&
+      parsed.confidence &&
+      Array.isArray(parsed.confidence.whatWouldChangeIt) &&
+      parsed.signals
+    ) {
+      // The generator field is the truth of who produced it; keep the draft's
+      // signal bundle so references always resolve regardless of model echo.
+      return { ...parsed, signals: draft.signals };
+    }
+    return draft;
+  } catch {
+    return draft;
+  }
+}

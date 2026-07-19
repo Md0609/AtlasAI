@@ -25,6 +25,12 @@
     },
     {
       "path": "../../packages/dataplane"
+    },
+    {
+      "path": "../../services/intelligence/agents"
+    },
+    {
+      "path": "../../services/intelligence/egress"
     }
   ]
 }
