@@ -1,7 +1,8 @@
-# Atlas — Phases 1–4a (Ground truth · The mirror · Commitment loop · Guardrails)
+# Atlas — Phases 1–4b (Ground truth · The mirror · Commitment loop · Guardrails · Intelligence plane)
 
-Implementation of **Design blueprint §B1 Phases 1–4a** for Atlas AI, plus
-the minimal Phase-0 scaffolding they structurally require.
+Implementation of **Design blueprint §B1 Phases 1–4a** and the **mock-first
+core of Phase 4b** for Atlas AI, plus the minimal Phase-0 scaffolding they
+structurally require.
 
 - Phase 1 scope: [`docs/adr/ADR-000-phase1-interpretation.md`](docs/adr/ADR-000-phase1-interpretation.md)
 - Phase 2 scope ("The mirror" — versioned Investor Profile, scenario risk
@@ -16,6 +17,15 @@ the minimal Phase-0 scaffolding they structurally require.
   UserFacingContent, adversarial evals as CI gate, prompt registry,
   tracing + cost ceilings):
   [`docs/adr/ADR-003-phase4a-guardrails.md`](docs/adr/ADR-003-phase4a-guardrails.md)
+- Phase 4b scope ("Intelligence plane", mock-first per §B8 — generic
+  `LlmProvider` boundary + deterministic fixture + drop-in Anthropic,
+  `runAgent` loop with shared-analysis cache and cost ceilings, Layer-1
+  specialists + Red Team + Layer-2 PSA chokepoint, LLM-narrated Reality Check
+  & Briefs behind the Guard):
+  [`docs/adr/ADR-004-phase4b-intelligence-plane.md`](docs/adr/ADR-004-phase4b-intelligence-plane.md).
+  Enabling the real model is one env var + a key —
+  [`docs/enabling-anthropic.md`](docs/enabling-anthropic.md). Deferred within
+  4b: Copilot (§11.2) and the heuristic Relevance Ranker (§18.3).
 
 ## Layout
 
@@ -23,8 +33,14 @@ the minimal Phase-0 scaffolding they structurally require.
 packages/contracts       shared types: canonical records, events, signal values
 packages/domain          decimal money (34-digit, banker's rounding), dates, canonical hashing
 packages/schema          SQL migrations + migration runner (identity, security master, market data, portfolio)
+packages/dataplane       DB→engine loaders (breaks the api→agents cycle; depends on the engine only)
 services/ingest          vendor adapter boundary, mock vendor with injected defects, pipeline, quality checks
 services/signal-engine   deterministic Signal Engine v1 + golden/adversarial/property tests
+services/workers         event-bus workers: brief generation (now narrated), notification dispatch
+services/intelligence/runtime   LlmProvider boundary, fixture + Anthropic providers, runAgent loop, cache, ceilings, tracing, prompt registry
+services/intelligence/guard     stateless 3-layer Compliance Guard (structural, lexical, classifier) + guardText for narration
+services/intelligence/egress    sole constructor of UserFacingContent + renderNarration; the Guard's only caller
+services/intelligence/agents    Layer-1 specialists + Red Team, Layer-2 PSA, static-plan orchestrator, narration
 apps/api                 Fastify API: auth (Argon2id, jurisdiction gate), portfolios, transactions,
                          CSV import with mapping, exposure & performance endpoints (problem+json, trace_id)
 apps/web                 React UI: auth, portfolios, positions, exposure (unknown slice + provenance),
