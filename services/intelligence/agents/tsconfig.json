@@ -1,0 +1,18 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "composite": true
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../../../packages/contracts" },
+    { "path": "../../../packages/domain" },
+    { "path": "../../signal-engine" },
+    { "path": "../../../packages/dataplane" },
+    { "path": "../runtime" },
+    { "path": "../guard" },
+    { "path": "../egress" }
+  ]
+}

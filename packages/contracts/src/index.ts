@@ -281,6 +281,33 @@ export interface ContextualizationDoc {
 }
 
 // ---------------------------------------------------------------------------
+// Agent I/O vocabulary (Phase 4b, §22). Layer-1 shared analysis and the
+// Layer-2 PSA speak these typed shapes.
+// ---------------------------------------------------------------------------
+
+/**
+ * A Layer-1 SecurityContext (§21.2). No user field, by construction — the
+ * cache key and the regulatory boundary are the same line. Its signals are
+ * security-level facts (valuation, fundamentals), never user weights.
+ */
+export interface SecurityContext {
+  securityId: string;
+  name: string;
+  gicsSector: string | null;
+  signals: Record<string, ContextSignalValue>;
+}
+
+/** One typed finding from a specialist or the Red Team (§22.14). */
+export interface Finding {
+  agent: string;
+  kind: string; // e.g. 'financial.trend', 'valuation.multiple', 'redteam.bear'
+  /** Prose about the numbers — numbers themselves are referenced by signalRefs. */
+  statement: string;
+  signalRefs: string[];
+  confidence: ContextConfidence['level'];
+}
+
+// ---------------------------------------------------------------------------
 // Compliance Guard verdicts (Phase 4a, §21.6 / §A4.1)
 // ---------------------------------------------------------------------------
 

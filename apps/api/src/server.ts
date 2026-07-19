@@ -8,6 +8,7 @@ import cookie from '@fastify/cookie';
 import type pg from 'pg';
 import { loadUser, registerAuthRoutes } from './auth.js';
 import { registerBriefRoutes } from './briefs.js';
+import { registerContextualizeRoutes } from './contextualize.js';
 import { registerPortfolioRoutes } from './portfolios.js';
 import { registerProfileRoutes } from './profile.js';
 import { registerRadarRoutes } from './radars.js';
@@ -56,6 +57,7 @@ export async function buildServer(pool: pg.Pool): Promise<FastifyInstance> {
   registerThesisRoutes(app, pool);
   registerRadarRoutes(app, pool);
   registerBriefRoutes(app, pool);
+  registerContextualizeRoutes(app, pool);
 
   return app;
 }

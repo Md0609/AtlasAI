@@ -39,6 +39,9 @@
     },
     {
       "path": "packages/dataplane"
+    },
+    {
+      "path": "services/intelligence/agents"
     }
   ]
 }
