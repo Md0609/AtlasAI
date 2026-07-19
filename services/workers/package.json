@@ -13,7 +13,8 @@
     "@atlas/signal-engine": "0.1.0",
     "pg": "^8.13.1",
     "@atlas/dataplane": "0.1.0",
-    "@atlas/agents": "0.1.0"
+    "@atlas/agents": "0.1.0",
+    "@atlas/relevance": "0.1.0"
   },
   "devDependencies": {
     "@types/pg": "^8.11.10"

@@ -32,6 +32,9 @@
     },
     {
       "path": "../intelligence/agents"
+    },
+    {
+      "path": "../../packages/relevance"
     }
   ]
 }

@@ -9,6 +9,7 @@
     "packages/schema",
     "packages/bus",
     "packages/dataplane",
+    "packages/relevance",
     "services/intelligence/guard",
     "services/intelligence/egress",
     "services/intelligence/runtime",

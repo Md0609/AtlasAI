@@ -28,6 +28,12 @@ import type pg from 'pg';
 import { enqueue, type Job } from '@atlas/bus';
 import { dec } from '@atlas/domain';
 import { narrate, newTraceId } from '@atlas/agents';
+import { weeklyBudgetFor } from '@atlas/relevance';
+import {
+  computeBriefRelevance,
+  personaForUser,
+  weeklyDeliveredCount,
+} from './relevance.js';
 
 interface BriefNarration {
   traceId: string;
@@ -133,6 +139,16 @@ async function generateRadarFireBrief(pool: pg.Pool, userId: string, fireId: str
     target: observed.target ?? '—',
   });
 
+  // §18.3: deterministic relevance score, stored for the dispatcher's weekly
+  // budget accounting and the Weekly Review audit (§28.3).
+  const relevance = await computeBriefRelevance(pool, userId, {
+    briefClass: cls,
+    securityLinked: fire.security_id != null,
+    thesisLinked: isThesis,
+    ruleLinked: false,
+    weeklyDelivered: await weeklyDeliveredCount(pool, userId, new Date().toISOString().slice(0, 10)),
+  });
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -148,7 +164,7 @@ async function generateRadarFireBrief(pool: pg.Pool, userId: string, fireId: str
         narratedBody,
         tone,
         JSON.stringify({ observed: observed.value, target: observed.target }),
-        JSON.stringify({ radar_id: fire.radar_id, fire_id: fire.fire_id, observed: fire.observed, narration }),
+        JSON.stringify({ radar_id: fire.radar_id, fire_id: fire.fire_id, observed: fire.observed, narration, relevance }),
       ],
     );
     await client.query(`UPDATE radar_fires SET brief_id = $2 WHERE id = $1::bigint`, [
@@ -203,6 +219,15 @@ async function generateRuleBreachBrief(pool: pg.Pool, userId: string, ruleId: st
     limit: observed.limit ?? '—',
   });
 
+  // §18.3 relevance for the C1 rule-breach brief.
+  const relevance = await computeBriefRelevance(pool, userId, {
+    briefClass: 'C1',
+    securityLinked: false,
+    thesisLinked: false,
+    ruleLinked: true,
+    weeklyDelivered: await weeklyDeliveredCount(pool, userId, new Date().toISOString().slice(0, 10)),
+  });
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -215,7 +240,7 @@ async function generateRuleBreachBrief(pool: pg.Pool, userId: string, ruleId: st
         headline,
         narratedBody,
         JSON.stringify({ value: observed.value ?? null, limit: observed.limit ?? null }),
-        JSON.stringify({ rule_id: ruleId, observed, narration }),
+        JSON.stringify({ rule_id: ruleId, observed, narration, relevance }),
       ],
     );
     await enqueue(client, 'notify.dispatch', userId, { briefId: briefRows[0].id, userId });
@@ -305,6 +330,28 @@ export async function handleNotifyDispatch(pool: pg.Pool, job: Job): Promise<voi
           `INSERT INTO suppressions (user_id, brief_id, class, reason)
            VALUES ($1,$2,$3,'daily cap: 2 non-C0 notifications per day (§18.6)')`,
           [userId, briefId, brief.class],
+        );
+        await client.query('COMMIT');
+        return;
+      }
+
+      // §18.3: the persona's WEEKLY budget, on top of the daily cap. The
+      // Relevance Ranker's budget: once the week's allowance of interruptions
+      // is spent, further non-C0 briefs are suppressed (still in the inbox and
+      // the Weekly Review — §28.3 — just not pushed).
+      const persona = await personaForUser(client, userId);
+      const weeklyBudget = weeklyBudgetFor(persona);
+      const weekCount = await weeklyDeliveredCount(client, userId, day);
+      if (weekCount >= weeklyBudget) {
+        await client.query(
+          `INSERT INTO suppressions (user_id, brief_id, class, reason)
+           VALUES ($1,$2,$3,$4)`,
+          [
+            userId,
+            briefId,
+            brief.class,
+            `weekly budget: persona '${persona}' allows ${weeklyBudget} non-C0 notifications/week (§18.3)`,
+          ],
         );
         await client.query('COMMIT');
         return;

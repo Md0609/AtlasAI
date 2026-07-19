@@ -308,6 +308,61 @@ describe('C1 rule-breach briefs quote the stated reason (§14.6)', () => {
     const after = await pool.query(`SELECT count(*)::int AS n FROM briefs WHERE class = 'C1'`);
     expect(after.rows[0].n).toBe(before.rows[0].n);
   });
+
+  it('respects the persona weekly notification budget (§18.3)', async () => {
+    // A user with no profile ⇒ persona 'unknown' ⇒ weekly budget of 5 non-C0
+    // interruptions. Seed the week as already full, then dispatch one more.
+    const { rows: u } = await pool.query(
+      `INSERT INTO users (email, password_hash, jurisdiction_code, base_currency)
+       VALUES ('weekly@example.es','x','ES','EUR') RETURNING id`,
+    );
+    const uid = u[0].id as string;
+
+    const mkBrief = async (): Promise<string> => {
+      const { rows } = await pool.query(
+        `INSERT INTO briefs (user_id, class, headline, body) VALUES ($1,'C2','h','b') RETURNING id`,
+        [uid],
+      );
+      return rows[0].id as string;
+    };
+
+    // Seed 5 delivered interruptions in the CURRENT week. Bypass the 2/day
+    // trigger for setup only — we are testing the WEEKLY gate, not the daily
+    // one — and date them off today so the daily cap is a no-op at dispatch.
+    await pool.query(`ALTER TABLE notification_budget_ledger DISABLE TRIGGER notification_budget_trg`);
+    try {
+      for (let i = 0; i < 5; i++) {
+        const bid = await mkBrief();
+        await pool.query(
+          `INSERT INTO notification_budget_ledger (user_id, brief_id, class, day_bucket, week_bucket)
+           VALUES ($1,$2,'C2', (now()::date - 1), date_trunc('week', now())::date)`,
+          [uid, bid],
+        );
+      }
+    } finally {
+      await pool.query(`ALTER TABLE notification_budget_ledger ENABLE TRIGGER notification_budget_trg`);
+    }
+
+    // The 6th interruption this week must be suppressed with the §18.3 reason.
+    const sixth = await mkBrief();
+    await enqueue(pool, 'notify.dispatch', uid, { briefId: sixth, userId: uid });
+    const { stats } = await buildRunner(pool).drain();
+    expect(stats.dead).toBe(0);
+
+    const { rows: sup } = await pool.query(
+      `SELECT reason FROM suppressions WHERE user_id = $1 AND brief_id = $2`,
+      [uid, sixth],
+    );
+    expect(sup.length).toBe(1);
+    expect(sup[0].reason).toContain('weekly budget');
+    expect(sup[0].reason).toContain('§18.3');
+    // And it was NOT delivered.
+    const { rows: notif } = await pool.query(
+      `SELECT count(*)::int AS n FROM notifications WHERE brief_id = $1`,
+      [sixth],
+    );
+    expect(notif[0].n).toBe(0);
+  });
 });
 
 describe('decisions (P-03: reasoning captured, append-only)', () => {
