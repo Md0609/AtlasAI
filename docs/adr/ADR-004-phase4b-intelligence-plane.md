@@ -99,6 +99,10 @@ w5·strategy_linkage + w6·novelty + w7·actionability − w8·noise_prior −
 w9·recent_volume`. Weights are configurable with **persona-specific defaults**
 (persona = the §6.1 strategy) and **user-specific learned overrides** (migration
 013 `relevance_weight_overrides`, merged on top of the default at resolve time).
+The persona defaults and weekly budgets are **data, not logic** — JSON config
+(`packages/relevance/config/persona-weights.json`,
+`notification-budgets.json`), loaded and validated once at init, so they can be
+retuned without a code change.
 Each persona has a **weekly notification budget**, enforced at dispatch
 alongside the §18.6 2/day cap: once the week's non-C0 allowance is spent, further
 interruptions are suppressed (still in the inbox / Weekly Review, §28.3). Ranking

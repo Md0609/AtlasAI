@@ -3,6 +3,7 @@
  * subtractive terms, determinism), persona defaults + user overrides, ranking
  * order + tie-break, and weekly-budget enforcement.
  */
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { dec } from '@atlas/domain';
 import type { RelevanceFeatures, RelevanceWeights } from '@atlas/contracts';
@@ -75,6 +76,25 @@ describe('scoreRelevance — the §18.3 formula', () => {
     const a = scoreRelevance(f, DEFAULT_WEIGHTS.value);
     const b = scoreRelevance(f, DEFAULT_WEIGHTS.value);
     expect(a).toBe(b);
+  });
+});
+
+describe('configuration is data, not code (§18.3 defaults live in config files)', () => {
+  const readConfig = (name: string): Record<string, unknown> =>
+    JSON.parse(readFileSync(new URL(`../config/${name}`, import.meta.url), 'utf8'));
+
+  it('DEFAULT_WEIGHTS is loaded verbatim from config/persona-weights.json', () => {
+    const raw = readConfig('persona-weights.json');
+    for (const persona of Object.keys(DEFAULT_WEIGHTS) as Array<keyof typeof DEFAULT_WEIGHTS>) {
+      expect(DEFAULT_WEIGHTS[persona]).toEqual(raw[persona]);
+    }
+  });
+
+  it('WEEKLY_BUDGET is loaded verbatim from config/notification-budgets.json', () => {
+    const raw = readConfig('notification-budgets.json');
+    for (const persona of Object.keys(WEEKLY_BUDGET) as Array<keyof typeof WEEKLY_BUDGET>) {
+      expect(WEEKLY_BUDGET[persona]).toBe(raw[persona]);
+    }
   });
 });
 
