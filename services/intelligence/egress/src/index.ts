@@ -31,7 +31,7 @@ import type {
   UserQuoteSource,
 } from '@atlas/contracts';
 import { dec, fixed } from '@atlas/domain';
-import { guardCheck, type LexicalInputSegment } from '@atlas/guard';
+import { guardCheck, guardText, type LexicalInputSegment } from '@atlas/guard';
 
 // ---------------------------------------------------------------------------
 // The branded type
@@ -240,4 +240,47 @@ export async function renderUserFacingContent(
 
   if (!verdict.approved) return { rejected: true, verdict };
   return UserFacingContent[INTERNAL_CREATE](fullText, sections, verdict, outputHash);
+}
+
+// ---------------------------------------------------------------------------
+// Narration guard (Phase 4b). Free-text surfaces — briefs, Reality Check —
+// whose numbers were computed deterministically upstream (provenanced) and
+// may be rephrased by a model. There is no UserFacingContent to construct
+// here; the risk is a directive/rating/prediction leaking into prose, which
+// is exactly what the lexical + classifier layers catch (guardText). The
+// egress module remains the guard's sole caller (architecture test §47.2).
+// ---------------------------------------------------------------------------
+
+export interface NarrationInput {
+  text: string;
+  /** Verbatim user-quote spans to mask (their words may contain directives). */
+  quotedSpans?: string[];
+  userId: string | null;
+  recordDecision: GuardDecisionRecorder;
+  generator: ContextualizationDoc['generator'];
+}
+
+export interface NarrationResult {
+  approved: boolean;
+  /** The approved narration, or the caller's fallback if rejected (set by the caller). */
+  text: string;
+  verdict: GuardVerdict;
+}
+
+export async function renderNarration(input: NarrationInput): Promise<NarrationResult> {
+  const segments: LexicalInputSegment[] = [];
+  let remaining = input.text;
+  for (const q of input.quotedSpans ?? []) {
+    const idx = remaining.indexOf(q);
+    if (idx === -1) continue;
+    if (idx > 0) segments.push({ text: remaining.slice(0, idx), quoted: false });
+    segments.push({ text: q, quoted: true });
+    remaining = remaining.slice(idx + q.length);
+  }
+  segments.push({ text: remaining, quoted: false });
+
+  const verdict = guardText(segments);
+  const outputHash = createHash('sha256').update(input.text).digest('hex');
+  await input.recordDecision({ userId: input.userId, outputHash, verdict, generator: input.generator });
+  return { approved: verdict.approved, text: input.text, verdict };
 }

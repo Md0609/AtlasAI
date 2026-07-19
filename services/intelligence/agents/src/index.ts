@@ -22,6 +22,10 @@ export {
   type SpecialistOpts,
 } from './specialists.js';
 export { runPsa, type PsaResult } from './psa.js';
+export { narrate, type NarrateInput, type NarrateResult } from './narration.js';
+// Re-export the trace-id minter so API surfaces can correlate a whole request
+// tree without taking a direct dependency on @atlas/runtime internals.
+export { newTraceId } from '@atlas/runtime';
 export {
   contextualize,
   deepAnalysis,
@@ -34,5 +38,6 @@ export {
   NEWS_FILINGS,
   RED_TEAM,
   PSA,
+  NARRATOR,
   REGISTERED,
 } from './prompts.js';

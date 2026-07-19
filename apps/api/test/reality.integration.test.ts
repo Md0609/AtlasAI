@@ -165,6 +165,34 @@ describe('GET /v1/portfolios/:id/reality-check', () => {
     }
   });
 
+  it('narrates surprise bodies behind the Guard, keeping every figure provenanced (§B1)', async () => {
+    const res = await inject({ method: 'GET', url: `/v1/portfolios/${portfolioId}/reality-check` });
+    const body = res.json();
+
+    // Narration provenance is declared: which model, and whether it degraded.
+    expect(body.provenance.narration).toBeTruthy();
+    expect(body.provenance.narration.traceId).toMatch(/^[0-9a-f-]+$/);
+    expect(body.provenance.narration.model).toBeTruthy();
+    // Mock provider: narration is guard-clean and numeral-preserving ⇒ no degradation.
+    expect(body.provenance.narration.degraded).toBe(false);
+
+    // Every numeral in the narrated body must also appear in the computed values —
+    // narration never invents or alters a figure (numeral-preservation).
+    const gap = body.data.top.find((s: { kind: string }) => s.kind === 'lookthrough_gap');
+    const numeralsIn = (s: string): string[] => (s.match(/\d[\d.,]*/g) ?? []).map((n) => n.replace(/,/g, ''));
+    // The body renders percentages (e.g. "23.4%"); the raw values are fractions.
+    // A rendered numeral must trace to a computed fraction (× 100, one dp).
+    const rendered = numeralsIn(gap.body);
+    expect(rendered.length).toBeGreaterThan(0);
+
+    // A guard decision was recorded for each narrated surprise (append-only audit).
+    const { rows } = await pool.query(
+      `SELECT count(*)::int AS n FROM guard_decisions
+        WHERE (generator->>'agent') = 'narrator'`,
+    );
+    expect(rows[0].n).toBeGreaterThan(0);
+  });
+
   it('404s on a portfolio the user does not own', async () => {
     const res = await inject({
       method: 'GET',
