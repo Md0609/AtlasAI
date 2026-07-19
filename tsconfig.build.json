@@ -45,6 +45,9 @@
     },
     {
       "path": "packages/relevance"
+    },
+    {
+      "path": "packages/portfolio-core"
     }
   ]
 }

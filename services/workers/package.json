@@ -5,7 +5,6 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "dependencies": {
-    "@atlas/api": "0.1.0",
     "@atlas/bus": "0.1.0",
     "@atlas/contracts": "0.1.0",
     "@atlas/domain": "0.1.0",
@@ -14,9 +13,11 @@
     "pg": "^8.13.1",
     "@atlas/dataplane": "0.1.0",
     "@atlas/agents": "0.1.0",
-    "@atlas/relevance": "0.1.0"
+    "@atlas/relevance": "0.1.0",
+    "@atlas/portfolio-core": "0.1.0"
   },
   "devDependencies": {
-    "@types/pg": "^8.11.10"
+    "@types/pg": "^8.11.10",
+    "@atlas/api": "0.1.0"
   }
 }

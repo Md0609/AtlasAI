@@ -12,7 +12,7 @@ import type pg from 'pg';
 import { enqueue, recordEvent, type Job } from '@atlas/bus';
 import { computePortfolioSignals } from '@atlas/signal-engine';
 import { loadConsolidatedInputs } from '@atlas/dataplane';
-import { evaluateAndPersistUserRules } from '@atlas/api/internal';
+import { evaluateAndPersistUserRules } from '@atlas/portfolio-core';
 
 /**
  * security.changed {securityId}: fan out to every user exposed to it —
