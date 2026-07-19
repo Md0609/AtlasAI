@@ -150,6 +150,8 @@ export interface GuardDecisionRecord {
   outputHash: string;
   verdict: GuardVerdict;
   generator: ContextualizationDoc['generator'];
+  /** §21.6 regeneration counter: 0 = initial attempt, 1..2 = a regeneration. */
+  regenerated?: number;
 }
 
 export type GuardDecisionRecorder = (record: GuardDecisionRecord) => Promise<void>;
@@ -160,8 +162,8 @@ export function makePgGuardRecorder(db: pg.Pool | pg.PoolClient): GuardDecisionR
     await db.query(
       `INSERT INTO guard_decisions
          (user_id, output_hash, verdict, violations, ruleset_version,
-          classifier_version, classifier_score, generator, latency_ms)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          classifier_version, classifier_score, generator, regenerated, latency_ms)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
       [
         r.userId,
         r.outputHash,
@@ -171,6 +173,7 @@ export function makePgGuardRecorder(db: pg.Pool | pg.PoolClient): GuardDecisionR
         r.verdict.classifierVersion,
         r.verdict.classifierScore,
         JSON.stringify(r.generator),
+        r.regenerated ?? 0,
         r.verdict.latencyMs,
       ],
     );
@@ -184,6 +187,8 @@ export function makePgGuardRecorder(db: pg.Pool | pg.PoolClient): GuardDecisionR
 export interface EgressOptions {
   verifyQuote: QuoteVerifier;
   recordDecision: GuardDecisionRecorder;
+  /** §21.6 regeneration attempt index for the guard-decision audit (default 0). */
+  regenerated?: number;
 }
 
 export async function renderUserFacingContent(
@@ -236,6 +241,7 @@ export async function renderUserFacingContent(
     outputHash,
     verdict,
     generator: doc.generator,
+    regenerated: opts.regenerated ?? 0,
   });
 
   if (!verdict.approved) return { rejected: true, verdict };

@@ -20,7 +20,7 @@ import type {
   Finding,
   SecurityContext,
 } from '@atlas/contracts';
-import { getPrompt, getProvider, runAgent, type LlmProvider } from '@atlas/runtime';
+import { getPrompt, getProvider, runAgent, type LlmMessage, type LlmProvider } from '@atlas/runtime';
 import type { Db } from '@atlas/dataplane';
 import {
   isRejected,
@@ -30,6 +30,7 @@ import {
   type EgressResult,
 } from '@atlas/egress';
 import { buildUserBundle, mergeSignals, type UserBundle } from './context.js';
+import { correctionForViolations, withRegeneration } from './regeneration.js';
 
 const CONCENTRATION_RULES = new Set(['max_single_name', 'max_sector', 'min_cash', 'max_cash', 'max_positions']);
 
@@ -38,6 +39,8 @@ export interface PsaResult {
   egress: EgressResult;
   model: string;
   degraded: boolean;
+  /** §21.6: how many regenerations the Guard forced (0..2). */
+  regenerations: number;
 }
 
 export async function runPsa(
@@ -64,42 +67,68 @@ export async function runPsa(
     met: user.metConditions.map((c) => c.id),
   });
 
-  const result = await runAgent(db, {
-    agent: 'psa',
-    tier: 'mid',
-    userId, // personal — never cached (§40.4)
-    system: prompt.sections.system,
-    messages: [{ role: 'user', content: buildTask(security, findings) }],
-    maxTokens: 2000,
-    jsonOutput: true,
-    fallback: { text: JSON.stringify(draft) },
-    promptVersion: prompt.version,
-    promptHash: prompt.hash,
-    inputHash: ih,
-    surface: 'contextualize',
-    traceId: opts.traceId,
-    parentSpanId: opts.parentSpanId,
-    provider: opts.provider ?? getProvider(),
-  });
+  const verifyQuote = makePgQuoteVerifier(db);
+  const recordDecision = makePgGuardRecorder(db);
+  const baseMessages: LlmMessage[] = [{ role: 'user', content: buildTask(security, findings) }];
+  const provider = opts.provider ?? getProvider();
 
-  const doc = parseDoc(result.text, draft);
-  const egress = await renderUserFacingContent(doc, {
-    verifyQuote: makePgQuoteVerifier(db),
-    recordDecision: makePgGuardRecorder(db),
-  });
-
-  // §21.6: on guard rejection, degrade to a minimal, guaranteed-clean doc
-  // (facts + unknown only, no user quotes) rather than surface nothing.
-  if (isRejected(egress)) {
-    const safe = buildSafeDoc(userId, security, findings, signals);
-    const safeEgress = await renderUserFacingContent(safe, {
-      verifyQuote: makePgQuoteVerifier(db),
-      recordDecision: makePgGuardRecorder(db),
+  // §21.6: generate → guard → regenerate ≤2 (feeding the specific violations
+  // back) → degrade. Each attempt is a real, traced generation; its verdict is
+  // recorded with the regeneration index.
+  const gen = await withRegeneration(async (attemptIndex, priorViolations) => {
+    const messages: LlmMessage[] =
+      priorViolations.length > 0
+        ? [...baseMessages, { role: 'user', content: correctionForViolations(priorViolations) }]
+        : baseMessages;
+    const result = await runAgent(db, {
+      agent: 'psa',
+      tier: 'mid',
+      userId, // personal — never cached (§40.4)
+      system: prompt.sections.system,
+      messages,
+      maxTokens: 2000,
+      jsonOutput: true,
+      fallback: { text: JSON.stringify(draft) },
+      promptVersion: prompt.version,
+      promptHash: prompt.hash,
+      inputHash: ih,
+      surface: 'contextualize',
+      traceId: opts.traceId,
+      parentSpanId: opts.parentSpanId,
+      provider,
     });
-    return { doc: safe, egress: safeEgress, model: result.model, degraded: true };
+    const doc = parseDoc(result.text, draft);
+    const egress = await renderUserFacingContent(doc, {
+      verifyQuote,
+      recordDecision,
+      regenerated: attemptIndex,
+    });
+    return {
+      approved: !isRejected(egress),
+      result: { doc, egress, model: result.model, degraded: result.degraded },
+      violations: isRejected(egress) ? egress.verdict.violations : [],
+    };
+  });
+
+  if (gen.approved) {
+    return {
+      doc: gen.result.doc,
+      egress: gen.result.egress,
+      model: gen.result.model,
+      degraded: gen.result.degraded,
+      regenerations: gen.regenerations,
+    };
   }
 
-  return { doc, egress, model: result.model, degraded: result.degraded };
+  // §21.6: retries exhausted → degrade to a minimal, guaranteed-clean doc
+  // (facts + unknown only, no user quotes) rather than surface nothing.
+  const safe = buildSafeDoc(userId, security, findings, signals);
+  const safeEgress = await renderUserFacingContent(safe, {
+    verifyQuote,
+    recordDecision,
+    regenerated: gen.regenerations,
+  });
+  return { doc: safe, egress: safeEgress, model: gen.result.model, degraded: true, regenerations: gen.regenerations };
 }
 
 function buildTask(security: SecurityContext, findings: Finding[]): string {

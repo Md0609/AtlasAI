@@ -22,6 +22,13 @@ export {
   type SpecialistOpts,
 } from './specialists.js';
 export { runPsa, type PsaResult } from './psa.js';
+export {
+  withRegeneration,
+  correctionForViolations,
+  MAX_REGENERATIONS,
+  type GuardedOutcome,
+  type RegenerationResult,
+} from './regeneration.js';
 export { narrate, type NarrateInput, type NarrateResult } from './narration.js';
 export {
   buildCopilotContext,
