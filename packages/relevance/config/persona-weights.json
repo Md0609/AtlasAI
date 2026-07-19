@@ -1,0 +1,8 @@
+{
+  "_comment": "Relevance Ranker (§18.3) persona-specific DEFAULT weights. Data only — edit these values to retune personas WITHOUT touching application logic. Each persona needs all nine weights w1..w9; w8 (noise_prior) and w9 (recent_volume) are applied as SUBTRACTIVE by the scorer, so store them as positive magnitudes. Feature order: w1 materiality, w2 position_weight, w3 thesis_linkage, w4 rule_linkage, w5 strategy_linkage, w6 novelty, w7 actionability, w8 noise_prior, w9 recent_volume.",
+  "quality_growth": { "w1": "0.28", "w2": "0.20", "w3": "0.28", "w4": "0.15", "w5": "0.12", "w6": "0.10", "w7": "0.10", "w8": "0.15", "w9": "0.10" },
+  "value":          { "w1": "0.30", "w2": "0.24", "w3": "0.22", "w4": "0.15", "w5": "0.10", "w6": "0.10", "w7": "0.10", "w8": "0.15", "w9": "0.10" },
+  "dividend_income":{ "w1": "0.22", "w2": "0.20", "w3": "0.20", "w4": "0.18", "w5": "0.10", "w6": "0.10", "w7": "0.08", "w8": "0.20", "w9": "0.10" },
+  "passive_index":  { "w1": "0.18", "w2": "0.20", "w3": "0.10", "w4": "0.15", "w5": "0.10", "w6": "0.08", "w7": "0.10", "w8": "0.25", "w9": "0.18" },
+  "unknown":        { "w1": "0.25", "w2": "0.20", "w3": "0.20", "w4": "0.15", "w5": "0.10", "w6": "0.10", "w7": "0.10", "w8": "0.15", "w9": "0.10" }
+}

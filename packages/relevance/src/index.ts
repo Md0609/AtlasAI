@@ -21,6 +21,7 @@
  * Weights are configurable, with persona-specific defaults and user-specific
  * learned overrides; a weekly notification budget is defined per persona.
  */
+import { readFileSync } from 'node:fs';
 import { dec, str, ZERO, type Dec } from '@atlas/domain';
 import type {
   Persona,
@@ -43,77 +44,73 @@ export type {
 } from '@atlas/contracts';
 
 // ---------------------------------------------------------------------------
-// Persona defaults (§18.3 "persona-specific default weights").
+// Configuration (§18.3). The persona-specific default weights and the weekly
+// notification budgets are DATA, not logic: they live in JSON config files
+// (config/persona-weights.json, config/notification-budgets.json) so they can
+// be retuned without changing this module. They are loaded and validated once
+// at module init; a malformed config fails fast with a precise error.
 // ---------------------------------------------------------------------------
+
+const PERSONAS: Persona[] = ['quality_growth', 'value', 'dividend_income', 'passive_index', 'unknown'];
+const WEIGHT_KEYS: Array<keyof RelevanceWeights> = ['w1', 'w2', 'w3', 'w4', 'w5', 'w6', 'w7', 'w8', 'w9'];
+
+const CONFIG_DIR = new URL('../config/', import.meta.url);
+
+function loadConfig<T>(file: string): T {
+  try {
+    return JSON.parse(readFileSync(new URL(file, CONFIG_DIR), 'utf8')) as T;
+  } catch (err) {
+    throw new Error(`@atlas/relevance: cannot load config ${file}: ${(err as Error).message}`);
+  }
+}
+
+function validateWeights(raw: Record<string, unknown>): Record<Persona, RelevanceWeights> {
+  const out = {} as Record<Persona, RelevanceWeights>;
+  for (const persona of PERSONAS) {
+    const w = raw[persona] as Partial<RelevanceWeights> | undefined;
+    if (!w) throw new Error(`@atlas/relevance: persona-weights.json missing persona "${persona}"`);
+    const resolved = {} as RelevanceWeights;
+    for (const k of WEIGHT_KEYS) {
+      const v = w[k];
+      if (typeof v !== 'string' || v.trim() === '' || Number.isNaN(Number(v))) {
+        throw new Error(`@atlas/relevance: persona-weights.json ${persona}.${k} must be a decimal string`);
+      }
+      resolved[k] = v;
+    }
+    out[persona] = resolved;
+  }
+  return out;
+}
+
+function validateBudgets(raw: Record<string, unknown>): WeeklyBudget {
+  const out = {} as WeeklyBudget;
+  for (const persona of PERSONAS) {
+    const n = raw[persona];
+    if (typeof n !== 'number' || !Number.isInteger(n) || n < 0) {
+      throw new Error(`@atlas/relevance: notification-budgets.json ${persona} must be a non-negative integer`);
+    }
+    out[persona] = n;
+  }
+  return out;
+}
 
 /**
- * A neutral baseline, tuned per persona below. The additive terms (w1..w7)
- * express "how much this kind of signal matters to this investor"; the
- * subtractive terms (w8 noise_prior, w9 recent_volume) express restraint — how
- * hard to push back on noise and how quickly to back off after recent volume.
+ * Default weights by persona (§18.3 "persona-specific default weights"), loaded
+ * from config/persona-weights.json. Passive indexers want quiet; conviction
+ * strategies weight thesis/materiality up — all tunable in the JSON, not here.
  */
-const BASELINE: RelevanceWeights = {
-  w1: '0.25', // materiality
-  w2: '0.20', // position_weight
-  w3: '0.20', // thesis_linkage
-  w4: '0.15', // rule_linkage
-  w5: '0.10', // strategy_linkage
-  w6: '0.10', // novelty
-  w7: '0.10', // actionability
-  w8: '0.15', // noise_prior
-  w9: '0.10', // recent_volume
-};
+export const DEFAULT_WEIGHTS: Record<Persona, RelevanceWeights> = validateWeights(
+  loadConfig<Record<string, unknown>>('persona-weights.json'),
+);
 
 /**
- * Default weights by persona. Passive indexers want quiet: materiality and
- * thesis linkage matter less, noise/volume restraint matters more. Conviction
- * strategies (quality-growth, value) weight thesis/materiality up. Income
- * investors sit in between with stronger noise suppression.
+ * Weekly notification budgets per persona (§18.3), loaded from
+ * config/notification-budgets.json. Counts NON-exempt interruptions only; C0
+ * is never budgeted away (§18.4). Sits ALONGSIDE the §18.6 2/day hard cap.
  */
-export const DEFAULT_WEIGHTS: Record<Persona, RelevanceWeights> = {
-  quality_growth: {
-    ...BASELINE,
-    w1: '0.28',
-    w3: '0.28', // the thesis is the point
-    w5: '0.12',
-  },
-  value: {
-    ...BASELINE,
-    w1: '0.30', // a mispricing event is material by definition
-    w2: '0.24',
-    w3: '0.22',
-  },
-  dividend_income: {
-    ...BASELINE,
-    w1: '0.22',
-    w4: '0.18', // income rules (yield, concentration) carry weight
-    w7: '0.08', // buy-and-hold: less about immediate action
-    w8: '0.20', // more noise suppression
-  },
-  passive_index: {
-    ...BASELINE,
-    w1: '0.18',
-    w3: '0.10',
-    w6: '0.08',
-    w8: '0.25', // want quiet
-    w9: '0.18', // back off fast after recent volume
-  },
-  unknown: { ...BASELINE },
-};
-
-// ---------------------------------------------------------------------------
-// Weekly budgets (§18.3 "weekly notification budgets defined for each persona").
-// Counts NON-exempt interruptions only; C0 (a user's own falsification firing)
-// is never budgeted away (§18.4). These sit ALONGSIDE the §18.6 2/day hard cap.
-// ---------------------------------------------------------------------------
-
-export const WEEKLY_BUDGET: WeeklyBudget = {
-  quality_growth: 7,
-  value: 7,
-  dividend_income: 5,
-  passive_index: 3,
-  unknown: 5,
-};
+export const WEEKLY_BUDGET: WeeklyBudget = validateBudgets(
+  loadConfig<Record<string, unknown>>('notification-budgets.json'),
+);
 
 /** The persona for a user: stated strategy wins, else inferred, else unknown. */
 export function personaFor(stated: Strategy | null, inferred: Strategy | null): Persona {

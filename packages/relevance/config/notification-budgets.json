@@ -1,0 +1,8 @@
+{
+  "_comment": "Relevance Ranker (§18.3) weekly notification budgets per persona — the maximum number of NON-C0 interruptions Atlas will push in a calendar week (C0, a user's own falsification firing, is exempt — §18.4). Data only: edit to change how loud each persona is, without touching application logic.",
+  "quality_growth": 7,
+  "value": 7,
+  "dividend_income": 5,
+  "passive_index": 3,
+  "unknown": 5
+}
