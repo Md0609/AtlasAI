@@ -11,6 +11,7 @@ import { loadUser, registerAuthRoutes } from './auth.js';
 import { registerBriefRoutes } from './briefs.js';
 import { registerContextualizeRoutes } from './contextualize.js';
 import { registerCopilotRoutes } from './copilot.js';
+import { registerAccountRoutes } from './account.js';
 import { registerPortfolioRoutes } from './portfolios.js';
 import { registerProfileRoutes } from './profile.js';
 import { registerRadarRoutes } from './radars.js';
@@ -65,6 +66,7 @@ export async function buildServer(pool: pg.Pool): Promise<FastifyInstance> {
   registerBriefRoutes(app, pool);
   registerContextualizeRoutes(app, pool);
   registerCopilotRoutes(app, pool);
+  registerAccountRoutes(app, pool);
 
   return app;
 }

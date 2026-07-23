@@ -18,6 +18,7 @@ import { ThesisPanel } from './thesis-ui';
 import { RadarPanel } from './radar-ui';
 import { JournalView } from './journal-ui';
 import { CopilotProvider, CopilotHistory, useCopilot, useCopilotSubject } from './copilot-ui';
+import { SettingsPanel } from './settings-ui';
 
 const pct = (w: string | null | undefined, dp = 2) =>
   w == null ? '—' : `${(Number(w) * 100).toFixed(dp)}%`;
@@ -132,7 +133,7 @@ function Home({ me, onLogout }: { me: Me; onLogout: () => void }) {
 
   // §11.1 primary destinations available at Phase 3: Today, Portfolio,
   // Radar, Journal. Copilot arrives with the intelligence plane (Phase 4b).
-  const [section, setSection] = useState<'today' | 'portfolios' | 'radar' | 'journal' | 'copilot'>('today');
+  const [section, setSection] = useState<'today' | 'portfolios' | 'radar' | 'journal' | 'copilot' | 'settings'>('today');
 
   if (profileState === 'loading') return <div className="shell">Loading…</div>;
   if (profileState === 'missing') {
@@ -161,7 +162,7 @@ function Home({ me, onLogout }: { me: Me; onLogout: () => void }) {
         <div className="muted">{me.email} · {me.jurisdiction} <button className="link" onClick={onLogout}>Log out</button></div>
       </header>
       <nav className="tabs">
-        {(['today', 'portfolios', 'radar', 'journal', 'copilot'] as const).map((s) => (
+        {(['today', 'portfolios', 'radar', 'journal', 'copilot', 'settings'] as const).map((s) => (
           <button key={s} className={section === s ? 'tab active' : 'tab'} onClick={() => setSection(s)}>
             {s}
           </button>
@@ -173,6 +174,7 @@ function Home({ me, onLogout }: { me: Me; onLogout: () => void }) {
       {section === 'radar' && <RadarPanel />}
       {section === 'journal' && <JournalView />}
       {section === 'copilot' && <CopilotHistory />}
+      {section === 'settings' && <SettingsPanel />}
       {section === 'portfolios' && (
         <div className="card">
           {portfolios.length === 0 && <p className="muted">No portfolios yet.</p>}
