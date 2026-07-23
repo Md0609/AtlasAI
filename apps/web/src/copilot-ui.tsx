@@ -19,6 +19,7 @@ import {
   type ReactNode,
 } from 'react';
 import {
+  api,
   copilot,
   type CopilotContextType,
   type CopilotMessage,
@@ -170,6 +171,9 @@ function CommandK({ subject, onClose }: { subject: Subject; onClose: () => void 
               <div className="cmdk-role">{m.role === 'user' ? 'You' : 'Atlas'}</div>
               <div className="cmdk-content">{m.content || (busy ? '…' : '')}</div>
               {m.guard_approved === false && <div className="muted small">(withheld — could not answer without advice)</div>}
+              {m.role === 'assistant' && m.content && threadId && !busy && (
+                <SaveToJournal threadId={threadId} subject={subject} content={m.content} />
+              )}
             </div>
           ))}
         </div>
@@ -188,6 +192,36 @@ function CommandK({ subject, onClose }: { subject: Subject; onClose: () => void 
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * FR-11.6: the Copilot must OFFER to persist a material conclusion as a journal
+ * record. One click keeps the assistant's turn as a decision attributed to this
+ * conversation (source = copilot, linked to the thread).
+ */
+function SaveToJournal({ threadId, subject, content }: { threadId: string; subject: Subject; content: string }) {
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (saved) return <div className="muted small">✓ kept in your journal</div>;
+  const save = async () => {
+    try {
+      await api.post('/v1/decisions', {
+        action: 'other',
+        reason: content.slice(0, 2000),
+        source: 'copilot',
+        source_thread_id: threadId,
+        security_id: subject.type === 'security' ? subject.ref ?? undefined : undefined,
+      });
+      setSaved(true);
+    } catch {
+      setError('could not save');
+    }
+  };
+  return (
+    <button className="link small" onClick={save} title="Keep this in your journal (attributed to this chat)">
+      {error ?? 'Save to journal →'}
+    </button>
   );
 }
 

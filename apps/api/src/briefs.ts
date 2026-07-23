@@ -22,6 +22,10 @@ const decisionSchema = z.object({
   price: z.string().regex(/^-?\d+(\.\d+)?$/).optional(),
   currency: z.string().length(3).optional(),
   reason: z.string().trim().min(1, 'a decision needs a reason — your future self will read it').max(2000),
+  // FR-11.6: a conclusion the user chose to keep from a Copilot exchange. The
+  // thread makes the entry attributable in the Journal (§30.2 episodic).
+  source: z.enum(['user', 'copilot']).default('user'),
+  source_thread_id: z.string().uuid().optional(),
 });
 
 export function registerBriefRoutes(app: FastifyInstance, pool: pg.Pool): void {
@@ -147,11 +151,20 @@ export function registerBriefRoutes(app: FastifyInstance, pool: pg.Pool): void {
       const b = await pool.query(`SELECT 1 FROM briefs WHERE id = $1 AND user_id = $2`, [d.brief_id, user.id]);
       if (b.rows.length === 0) return problem(reply, req, 404, 'not-found', 'Brief not found');
     }
+    // Copilot attribution must reference the user's OWN thread — an entry can't
+    // claim to come from a conversation that isn't yours.
+    if (d.source_thread_id) {
+      const t = await pool.query(`SELECT 1 FROM copilot_threads WHERE id = $1 AND user_id = $2`, [d.source_thread_id, user.id]);
+      if (t.rows.length === 0) return problem(reply, req, 404, 'not-found', 'Copilot thread not found');
+    }
+    if (d.source === 'copilot' && !d.source_thread_id) {
+      return problem(reply, req, 400, 'validation', 'a copilot-sourced decision must reference its source_thread_id');
+    }
     const { rows } = await pool.query(
       `INSERT INTO decisions (user_id, security_id, thesis_id, brief_id, action,
-                              quantity, price, currency, reason_free_text)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-       RETURNING id, action, decided_at`,
+                              quantity, price, currency, reason_free_text, source, source_thread_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       RETURNING id, action, decided_at, source`,
       [
         user.id,
         d.security_id ?? null,
@@ -162,9 +175,11 @@ export function registerBriefRoutes(app: FastifyInstance, pool: pg.Pool): void {
         d.price ?? null,
         d.currency?.toUpperCase() ?? null,
         d.reason,
+        d.source,
+        d.source_thread_id ?? null,
       ],
     );
-    await audit(pool, user.id, 'decision.record', 'decision', rows[0].id, req.traceId, { action: d.action });
+    await audit(pool, user.id, 'decision.record', 'decision', rows[0].id, req.traceId, { action: d.action, source: d.source });
     return reply.status(201).send({ data: rows[0] });
   });
 }

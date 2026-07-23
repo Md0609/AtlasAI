@@ -137,3 +137,7 @@ kbd {
 .small { font-size: 12px; }
 .cmdk-input { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line); }
 .cmdk-input input { flex: 1; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+
+/* Journal / Copilot attribution */
+.badge { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 10px; background: var(--accent); color: #fff; margin-right: 6px; }
+button.link.small { font-size: 12px; margin-top: 6px; }

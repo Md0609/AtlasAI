@@ -1,51 +1,52 @@
 /**
- * Journal (§11.1): your reasoning history is a first-class object. At
- * Phase 3 it lists decisions — each with the reason you gave, immutable.
- * "History happens to you; a journal is authored by you" (§10.4).
+ * Journal (§11.1 / F-27): your reasoning history is a first-class object, not a
+ * settings page. A unified, immutable timeline over your decisions, theses and
+ * rules — "a journal is authored by you; history happens to you" (§10.4).
+ * Entries kept from a Copilot conversation are clearly marked as such (FR-11.6).
  */
 import { useEffect, useState } from 'react';
-import { api, type Decision } from './api';
+import { api, type JournalEntry } from './api';
 
-const ACTION_LABELS: Record<string, string> = {
-  buy: 'Bought',
-  sell: 'Sold',
-  hold: 'Held',
-  update_thesis: 'Updated thesis',
-  mark_thesis_broken: 'Marked thesis broken',
-  no_change: 'Decided: no change',
-  snooze: 'Snoozed',
-  other: 'Decision',
+const KIND_LABEL: Record<string, string> = {
+  decision: 'Decision',
+  thesis_written: 'Thesis',
+  thesis_falsified: 'Thesis falsified',
+  thesis_retired: 'Thesis retired',
+  thesis_superseded: 'Thesis superseded',
+  rule_set: 'Rule set',
+  rule_removed: 'Rule removed',
 };
 
 export function JournalView() {
-  const [decisions, setDecisions] = useState<Decision[]>([]);
+  const [entries, setEntries] = useState<JournalEntry[]>([]);
 
   useEffect(() => {
-    api
-      .get<{ data: Decision[] }>('/v1/decisions')
-      .then((r) => setDecisions(r.data))
-      .catch(() => {});
+    api.get<{ data: JournalEntry[] }>('/v1/journal').then((r) => setEntries(r.data)).catch(() => {});
   }, []);
 
   return (
     <div className="card">
       <h3>Journal</h3>
-      {decisions.length === 0 ? (
+      {entries.length === 0 ? (
         <p className="muted">
-          No decisions recorded yet. When a brief arrives you'll decide something — including,
-          often, "no change" — and the reason you give lives here, unedited, forever.
+          Your reasoning history lives here — decisions (including "no change"), the theses you write,
+          the rules you set — each with the reason you gave, unedited, forever.
         </p>
       ) : (
-        decisions.map((d) => (
-          <div key={d.id} className="thesis">
+        entries.map((e) => (
+          <div key={e.id} className="thesis">
             <div className="rule-head">
               <strong>
-                {ACTION_LABELS[d.action] ?? d.action}
-                {d.security_name ? ` · ${d.security_name}` : ''}
+                {KIND_LABEL[e.kind] ?? e.kind}
+                {e.security_name ? ` · ${e.security_name}` : ''}{' '}
+                <span className="muted small">{e.title}</span>
               </strong>
-              <span className="muted">{String(d.decided_at).slice(0, 10)}</span>
+              <span className="muted">
+                {e.source === 'copilot' && <span className="badge">from Copilot</span>}{' '}
+                {String(e.occurred_at).slice(0, 10)}
+              </span>
             </div>
-            <blockquote>“{d.reason_free_text}”</blockquote>
+            {e.detail && <blockquote>“{e.detail}”</blockquote>}
           </div>
         ))
       )}
