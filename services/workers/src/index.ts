@@ -8,6 +8,7 @@ import { WorkerRunner } from './runner.js';
 import { handleSecurityChanged, handleUserRecompute } from './handlers.js';
 import { handleRadarEvaluate } from './radar-worker.js';
 import { handleBriefGenerate, handleNotifyDispatch } from './brief-worker.js';
+import { handleAccountErasure } from './account-worker.js';
 
 export function buildRunner(pool: pg.Pool): WorkerRunner {
   return new WorkerRunner(pool)
@@ -15,10 +16,12 @@ export function buildRunner(pool: pg.Pool): WorkerRunner {
     .register('user.recompute', handleUserRecompute)
     .register('radar.evaluate', handleRadarEvaluate)
     .register('brief.generate', handleBriefGenerate)
-    .register('notify.dispatch', handleNotifyDispatch);
+    .register('notify.dispatch', handleNotifyDispatch)
+    .register('account.erase', handleAccountErasure);
 }
 
 export { WorkerRunner } from './runner.js';
 export { handleSecurityChanged, handleUserRecompute } from './handlers.js';
 export { handleRadarEvaluate } from './radar-worker.js';
 export { handleBriefGenerate, handleNotifyDispatch } from './brief-worker.js';
+export { handleAccountErasure, eraseUser } from './account-worker.js';
