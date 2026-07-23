@@ -102,8 +102,34 @@ reason → "tell me next time" raises the delta and logs the signal → the next
 brief is delivered; 404 on a suppression the user doesn't own). Full suite 305
 green.
 
+## Quiet-day dashboard states (§13.3)
+
+"This screen is the product." `GET /v1/today` turns silence into a positive
+assertion of work done, with every count sourced from real events (US-AI-02):
+
+- **needs_attention / attention_count** — unread briefs.
+- **reviewed** — `security.changed` events processed across the user's holdings
+  in the last 7 days (`updates`, `holdings`), and how many were material
+  (briefs raised, `material`).
+- **receipt** — the per-security breakdown behind that count ("show me what you
+  looked at"), the thing that makes the silence credible.
+- **quiet_days** — quiet days out of the last 30 (§13.4 normalizing inaction).
+- **open_questions** — met falsification conditions + rules in breach.
+- **weekly_review.next** — the upcoming Sunday.
+
+Decision — no fabricated categories. The §13.3 mock shows "12 filings, 63 news,
+2 earnings"; the ingest produces `security.changed`, not typed filing/news/
+earnings streams, so surfacing those categories would violate US-AI-02 (every
+number sourced). The endpoint reports the real "updates reviewed" count and its
+per-security receipt instead; the typed categories arrive when news/filings
+ingest does. The web `TodayView` renders the three trust elements; verified live
+in the browser.
+
+Verification: +2 integration tests (quiet day — sourced receipt, quiet-day
+streak, Sunday cadence, no fabrication; flip to needs-attention + a rule-breach
+open question when a rule breaches). Full suite 307 green.
+
 ## Deferred within Phase 5
 
-Weekly Review, Journal surfaces, memory hybrid retrieval + injection, quiet-day
-dashboard states — the remaining four sub-features, added to this ADR as they
-land.
+Weekly Review, Journal surfaces, memory hybrid retrieval + injection — the
+remaining three sub-features, added to this ADR as they land.

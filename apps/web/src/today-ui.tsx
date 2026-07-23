@@ -5,11 +5,12 @@
  * every choice records a decision with a reason (inaction included, §6.3).
  */
 import { useEffect, useState } from 'react';
-import { api, ApiError, type Brief, type Suppression } from './api';
+import { api, ApiError, type Brief, type Suppression, type Today } from './api';
 
 export function TodayView() {
   const [briefs, setBriefs] = useState<Brief[]>([]);
   const [suppressions, setSuppressions] = useState<Suppression[]>([]);
+  const [today, setToday] = useState<Today | null>(null);
   const [showSuppressed, setShowSuppressed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -17,6 +18,7 @@ export function TodayView() {
     Promise.all([
       api.get<{ data: Brief[] }>('/v1/briefs').then((r) => setBriefs(r.data)),
       api.get<{ data: Suppression[] }>('/v1/suppressions').then((r) => setSuppressions(r.data)),
+      api.get<{ data: Today }>('/v1/today').then((r) => setToday(r.data)),
     ]).catch(() => {});
   useEffect(() => {
     refresh();
@@ -28,15 +30,7 @@ export function TodayView() {
 
   return (
     <div>
-      {briefs.length === 0 && (
-        <div className="card quiet">
-          <h3>Nothing needs your attention today.</h3>
-          <p className="muted">
-            Atlas is watching your rules, your radars and your thesis conditions. When one of the
-            conditions you set is met, it will tell you — once, plainly, with the numbers.
-          </p>
-        </div>
-      )}
+      {today && !today.needs_attention && <QuietDay today={today} />}
 
       {theOne && (
         <BriefCard
@@ -74,6 +68,73 @@ export function TodayView() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * The quiet-day dashboard (§13.3). A positive assertion of work done: what Atlas
+ * reviewed, that nothing was material, the receipt, and the streak that says the
+ * silence is normal — not a broken system.
+ */
+function QuietDay({ today }: { today: Today }) {
+  const [showReceipt, setShowReceipt] = useState(false);
+  const { reviewed, receipt, quiet_days, open_questions, weekly_review } = today;
+  const reviewedLine =
+    reviewed.updates > 0
+      ? `Atlas reviewed ${reviewed.updates} update${reviewed.updates === 1 ? '' : 's'} across your ${reviewed.holdings} holding${reviewed.holdings === 1 ? '' : 's'}. None of them changed anything material to you.`
+      : `Atlas is watching your ${reviewed.holdings} holding${reviewed.holdings === 1 ? '' : 's'}, your rules and your thesis conditions. Nothing has changed that should change what you do.`;
+
+  return (
+    <div className="card quiet">
+      <h3>Nothing needs your attention today.</h3>
+      <p className="muted">{reviewedLine}</p>
+
+      {receipt.length > 0 && (
+        <>
+          <button className="link" onClick={() => setShowReceipt(!showReceipt)}>
+            {showReceipt ? 'Hide' : 'Show me what you looked at →'}
+          </button>
+          {showReceipt && (
+            <ul className="plain small">
+              {receipt.map((r) => (
+                <li key={r.security_id}>
+                  · {r.name} <span className="muted">— {r.updates} update{r.updates === 1 ? '' : 's'} reviewed</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+
+      <p className="muted small" style={{ marginTop: 12 }}>
+        You've had {quiet_days.quiet} quiet day{quiet_days.quiet === 1 ? '' : 's'} of your last {quiet_days.of}. That's
+        healthy — most days, nothing should change what a long-term investor does.
+      </p>
+
+      {open_questions.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <h4>Open questions ({open_questions.length})</h4>
+          <ul className="plain">
+            {open_questions.map((q, i) => (
+              <li key={i}>
+                {q.kind === 'thesis_condition' ? (
+                  <>
+                    {q.security ? <strong>{q.security}: </strong> : null}
+                    <span>a falsification condition you set is met — “{q.text}”</span>
+                  </>
+                ) : (
+                  <span className="muted">Rule outside its limit: {q.text}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <p className="muted small" style={{ marginTop: 16, borderTop: '1px solid var(--line)', paddingTop: 12 }}>
+        Your weekly review is ready {new Date(`${weekly_review.next}T00:00:00Z`).toLocaleDateString(undefined, { weekday: 'long' })}.
+      </p>
     </div>
   );
 }
