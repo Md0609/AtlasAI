@@ -129,7 +129,42 @@ Verification: +2 integration tests (quiet day — sourced receipt, quiet-day
 streak, Sunday cadence, no fabrication; flip to needs-attention + a rule-breach
 open question when a rule breaches). Full suite 307 green.
 
+## Decision Journal surfaces (F-27 / US-MEM-01 / FR-11.6)
+
+"Your reasoning history is a first-class object, not a settings page." `GET
+/v1/journal` is a unified, reverse-chronological, **immutable** timeline over the
+things the user reasoned about and Atlas recorded: decisions (incl. "no change"),
+thesis lifecycle (written / falsified / retired / superseded), and rule lifecycle
+(set / removed) — each with the reason given. Filterable by security.
+
+**Attribution (FR-11.6).** `decisions` gains `source` (`user`|`copilot`|`system`)
+and `source_thread_id` (migration 017). The decision endpoint accepts a
+Copilot-sourced entry — validated to reference the user's OWN thread, and
+required to carry one — so a conclusion kept from a conversation is clearly
+marked and links back to the exchange. The web Copilot offers a one-click "Save
+to journal" on each answer; the Journal renders a "from Copilot" badge.
+
+**Design decisions:**
+- *No new entity; attribute the existing one.* FR-11.6 says persist conclusions
+  as *thesis/decision records* — so Copilot-kept conclusions are decisions
+  (`action: other`) with attribution, not a parallel "notes" table. Keeps the
+  immutable-history guarantee (the `decisions_immutable` trigger is untouched —
+  adding columns is DDL) and one audit surface.
+- *Memory- and Weekly-Review-ready shape.* Each `JournalEntry` is a stable id +
+  typed `kind` + timestamp + `source` + optional security + a `source_ref` back
+  to the immutable record — exactly the episodic-memory item shape (§30.2) the
+  later Memory consolidator and the Weekly Review's "what changed / decisions
+  this week" both read. No rework needed when those land.
+- *Erasure ordering.* The new `decisions.source_thread_id → copilot_threads` FK
+  means the erasure cascade now deletes `decisions` first (nothing references
+  it), before `copilot_threads`.
+
+Verification: +5 integration tests (unified timeline + security filter; Copilot
+attribution linking back to the thread; rejects a copilot decision with no /
+foreign thread; decisions still immutable). Full suite 312 green.
+
 ## Deferred within Phase 5
 
-Weekly Review, Journal surfaces, memory hybrid retrieval + injection — the
-remaining three sub-features, added to this ADR as they land.
+Weekly Review and memory hybrid retrieval + injection — the remaining two
+sub-features (explicitly not started this session), added to this ADR when they
+land.

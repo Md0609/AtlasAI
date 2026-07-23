@@ -63,6 +63,18 @@ export interface CopilotMessage {
   created_at: string;
 }
 
+export interface JournalEntry {
+  id: string;
+  kind: string;
+  occurred_at: string;
+  security_id: string | null;
+  security_name: string | null;
+  title: string;
+  detail: string;
+  source: string;
+  source_ref: string | null;
+}
+
 export interface Today {
   needs_attention: boolean;
   attention_count: number;

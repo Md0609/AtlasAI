@@ -25,6 +25,9 @@ import type { Job } from '@atlas/bus';
  * transitively through the portfolio / thesis that owns the row).
  */
 const HARD_DELETE: Array<[string, string]> = [
+  // decisions first: it references briefs, theses and copilot_threads, all of
+  // which are deleted below (and nothing references decisions).
+  ['decisions', `DELETE FROM decisions WHERE user_id = $1`],
   ['notification_feedback', `DELETE FROM notification_feedback WHERE user_id = $1`],
   ['user_notification_prefs', `DELETE FROM user_notification_prefs WHERE user_id = $1`],
   ['copilot_messages', `DELETE FROM copilot_messages WHERE user_id = $1`],
@@ -34,7 +37,6 @@ const HARD_DELETE: Array<[string, string]> = [
   ['notification_budget_ledger', `DELETE FROM notification_budget_ledger WHERE user_id = $1`],
   ['notification_dedup_ledger', `DELETE FROM notification_dedup_ledger WHERE user_id = $1`],
   ['email_outbox', `DELETE FROM email_outbox WHERE user_id = $1`],
-  ['decisions', `DELETE FROM decisions WHERE user_id = $1`],
   ['briefs', `DELETE FROM briefs WHERE user_id = $1`],
   ['radar_fires', `DELETE FROM radar_fires WHERE user_id = $1`],
   ['radars', `DELETE FROM radars WHERE user_id = $1`],
