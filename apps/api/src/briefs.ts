@@ -71,6 +71,50 @@ export function registerBriefRoutes(app: FastifyInstance, pool: pg.Pool): void {
     return reply.send({ data: rows });
   });
 
+  // US-NOT-02: "actually, tell me about these next time" — one click that
+  // retrains the threshold. The retrain raises the user's weekly notification
+  // budget (§18.3) so more of what the Ranker suppressed gets through, and logs
+  // the signal (§28.3). 'stop_telling_me' is the opposite nudge.
+  const feedbackSchema = z.object({ signal: z.enum(['tell_me_next_time', 'stop_telling_me']) });
+  const MAX_DELTA = 5;
+  const MIN_DELTA = -5;
+  app.post('/v1/suppressions/:id/feedback', async (req, reply) => {
+    const user = requireUser(req, reply);
+    if (!user) return;
+    const { id } = req.params as { id: string };
+    const parsed = feedbackSchema.safeParse(req.body);
+    if (!parsed.success) return problem(reply, req, 400, 'validation', 'signal is required');
+
+    const sup = await pool.query(`SELECT id FROM suppressions WHERE id = $1 AND user_id = $2`, [id, user.id]);
+    if (sup.rows.length === 0) return problem(reply, req, 404, 'not-found', 'Suppression not found');
+
+    const step = parsed.data.signal === 'tell_me_next_time' ? 1 : -1;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `INSERT INTO notification_feedback (user_id, suppression_id, signal) VALUES ($1, $2, $3)`,
+        [user.id, id, parsed.data.signal],
+      );
+      const { rows } = await client.query(
+        `INSERT INTO user_notification_prefs (user_id, weekly_budget_delta)
+         VALUES ($1, LEAST($3::int, GREATEST($2::int, $4::int)))
+         ON CONFLICT (user_id) DO UPDATE
+           SET weekly_budget_delta = LEAST($3::int, GREATEST($2::int, user_notification_prefs.weekly_budget_delta + $4::int)),
+               updated_at = now()
+         RETURNING weekly_budget_delta`,
+        [user.id, MIN_DELTA, MAX_DELTA, step],
+      );
+      await client.query('COMMIT');
+      return reply.send({ data: { weekly_budget_delta: rows[0].weekly_budget_delta } });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  });
+
   app.get('/v1/decisions', async (req, reply) => {
     const user = requireUser(req, reply);
     if (!user) return;

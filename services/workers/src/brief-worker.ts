@@ -28,9 +28,9 @@ import type pg from 'pg';
 import { enqueue, type Job } from '@atlas/bus';
 import { dec } from '@atlas/domain';
 import { narrate, newTraceId } from '@atlas/agents';
-import { weeklyBudgetFor } from '@atlas/relevance';
 import {
   computeBriefRelevance,
+  effectiveWeeklyBudget,
   personaForUser,
   weeklyDeliveredCount,
 } from './relevance.js';
@@ -340,7 +340,7 @@ export async function handleNotifyDispatch(pool: pg.Pool, job: Job): Promise<voi
       // is spent, further non-C0 briefs are suppressed (still in the inbox and
       // the Weekly Review — §28.3 — just not pushed).
       const persona = await personaForUser(client, userId);
-      const weeklyBudget = weeklyBudgetFor(persona);
+      const weeklyBudget = await effectiveWeeklyBudget(client, userId, persona);
       const weekCount = await weeklyDeliveredCount(client, userId, day);
       if (weekCount >= weeklyBudget) {
         await client.query(
