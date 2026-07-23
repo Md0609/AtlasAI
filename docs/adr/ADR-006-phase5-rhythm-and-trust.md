@@ -73,8 +73,37 @@ certificate; and normal immutability still holding outside the erasure
 transaction. Full suite 303 green. Web: a minimal Settings surface (§30.6) for
 export + typed-confirmation deletion.
 
+## Suppression transparency + retrain (F-23 / US-NOT-02 / FR-8.3)
+
+The suppressed-items surface already existed (`/v1/suppressions`, §28.3 — logged
+from day one). This adds the other half of the AC: the one-click *"actually,
+tell me about these next time"* that **retrains the threshold**.
+
+`POST /v1/suppressions/:id/feedback {signal: tell_me_next_time | stop_telling_me}`
+logs the signal append-only (`notification_feedback`, migration 016) and nudges
+the user's **weekly notification budget** — the §18.3 budget IS the threshold for
+how much gets through. Each "tell me" raises a per-user `weekly_budget_delta`
+(bounded ±5); the dispatcher now reads `effectiveWeeklyBudget = persona default +
+delta`, so more of what the Ranker suppressed reaches the user next week.
+
+Decision — retrain the budget, not the weights: the current dispatch gate is the
+weekly **count** (§18.3), so a per-user budget delta is the knob that actually
+changes behavior deterministically. Down-weighting the relevance features is a
+finer, per-category retrain that belongs with a score-gated dispatch (v1.1). The
+`notification_feedback` log captures the signal now so that later retrain has its
+training data (the §51.4 "ship the data capture" discipline).
+
+Erasure note: both new tables carry `user_id`, so they join the GDPR cascade
+(migration 015 mechanism) — `notification_feedback` gets its own erasure-aware
+append-only trigger.
+
+Verification: +2 integration tests (over-budget suppression → visible with a
+reason → "tell me next time" raises the delta and logs the signal → the next
+brief is delivered; 404 on a suppression the user doesn't own). Full suite 305
+green.
+
 ## Deferred within Phase 5
 
-Weekly Review, suppression transparency, Journal surfaces, memory hybrid
-retrieval + injection, quiet-day dashboard states — the remaining five
-sub-features, to be added to this ADR as they land.
+Weekly Review, Journal surfaces, memory hybrid retrieval + injection, quiet-day
+dashboard states — the remaining four sub-features, added to this ADR as they
+land.

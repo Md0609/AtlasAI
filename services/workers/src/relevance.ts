@@ -55,6 +55,24 @@ export async function weightsForUser(
   return resolveWeights(persona, (rows[0]?.weights ?? null) as Partial<RelevanceWeights> | null);
 }
 
+/**
+ * The user's EFFECTIVE weekly budget: the §18.3 persona default plus the delta
+ * the user has retrained via "tell me about these next time" (§28.3 / US-NOT-02),
+ * floored at zero.
+ */
+export async function effectiveWeeklyBudget(
+  db: pg.Pool | pg.PoolClient,
+  userId: string,
+  persona: Persona,
+): Promise<number> {
+  const { rows } = await db.query(
+    `SELECT weekly_budget_delta FROM user_notification_prefs WHERE user_id = $1`,
+    [userId],
+  );
+  const delta = rows[0]?.weekly_budget_delta ?? 0;
+  return Math.max(0, weeklyBudgetFor(persona) + delta);
+}
+
 /** Non-C0 interruptions already delivered to the user in the current week. */
 export async function weeklyDeliveredCount(
   db: pg.Pool | pg.PoolClient,
