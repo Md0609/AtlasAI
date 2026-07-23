@@ -63,6 +63,16 @@ export interface CopilotMessage {
   created_at: string;
 }
 
+export interface Today {
+  needs_attention: boolean;
+  attention_count: number;
+  reviewed: { holdings: number; updates: number; material: number; window_days: number };
+  receipt: Array<{ security_id: string; name: string; updates: number }>;
+  quiet_days: { quiet: number; of: number };
+  open_questions: Array<{ kind: string; text: string; security?: string; observed?: unknown }>;
+  weekly_review: { next: string };
+}
+
 export const copilot = {
   listThreads: () => api.get<{ data: CopilotThread[] }>('/v1/copilot/threads'),
   getThread: (id: string) =>
