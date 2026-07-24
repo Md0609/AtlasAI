@@ -273,7 +273,7 @@ export function CopilotHistory() {
             <button className="row" onClick={() => setOpenId(t.id)}>
               <strong>{t.title}</strong>{' '}
               <span className="muted">
-                {t.context_type} · {new Date(t.last_message_at).toLocaleString()}
+                {t.context_type} · {new Date(t.last_message_at).toLocaleString('en-GB')}
               </span>
             </button>
           </li>

@@ -262,7 +262,7 @@ export function registerPortfolioRoutes(app: FastifyInstance, pool: pg.Pool): vo
     if (!user) return;
     const parsed = portfolioSchema.safeParse(req.body);
     if (!parsed.success) {
-      return problem(reply, req, 400, 'validation', 'Invalid portfolio payload', parsed.error.issues[0]?.message);
+      return problem(reply, req, 400, 'validation', "Check the portfolio details", parsed.error.issues[0]?.message);
     }
     const { rows: countRows } = await pool.query(
       'SELECT count(*)::int AS n FROM portfolios WHERE user_id = $1 AND deleted_at IS NULL',
@@ -360,7 +360,7 @@ export function registerPortfolioRoutes(app: FastifyInstance, pool: pg.Pool): vo
     if (!p) return problem(reply, req, 404, 'not-found', 'Portfolio not found');
     const parsed = positionEntrySchema.safeParse(req.body);
     if (!parsed.success) {
-      return problem(reply, req, 400, 'validation', 'Invalid position payload', parsed.error.issues[0]?.message);
+      return problem(reply, req, 400, 'validation', "Check the holding details", parsed.error.issues[0]?.message);
     }
     // FR-3.2 manual entry → synthetic buy transaction; transactions stay the
     // single source of truth (§27.3.4).
@@ -413,7 +413,7 @@ export function registerPortfolioRoutes(app: FastifyInstance, pool: pg.Pool): vo
     if (!p) return problem(reply, req, 404, 'not-found', 'Portfolio not found');
     const parsed = transactionSchema.safeParse(req.body);
     if (!parsed.success) {
-      return problem(reply, req, 400, 'validation', 'Invalid transaction payload', parsed.error.issues[0]?.message);
+      return problem(reply, req, 400, 'validation', "Check the transaction details", parsed.error.issues[0]?.message);
     }
     if (parsed.data.security_id) {
       const s = await pool.query('SELECT 1 FROM securities WHERE id = $1', [parsed.data.security_id]);
@@ -454,7 +454,7 @@ export function registerPortfolioRoutes(app: FastifyInstance, pool: pg.Pool): vo
     if (!p) return problem(reply, req, 404, 'not-found', 'Portfolio not found');
     const parsed = importSchema.safeParse(req.body);
     if (!parsed.success) {
-      return problem(reply, req, 400, 'validation', 'Invalid import payload', parsed.error.issues[0]?.message);
+      return problem(reply, req, 400, 'validation', "Check the file you're importing", parsed.error.issues[0]?.message);
     }
     const { csv, mapping, defaults } = parsed.data;
     const rows = parseCsv(csv);
@@ -608,7 +608,7 @@ export function registerPortfolioRoutes(app: FastifyInstance, pool: pg.Pool): vo
     if (!p) return problem(reply, req, 404, 'not-found', 'Portfolio not found');
     const parsed = privateAssetSchema.safeParse(req.body);
     if (!parsed.success) {
-      return problem(reply, req, 400, 'validation', 'Invalid private asset payload', parsed.error.issues[0]?.message);
+      return problem(reply, req, 400, 'validation', "Check the asset details", parsed.error.issues[0]?.message);
     }
     const d = parsed.data;
     const { rows } = await pool.query(

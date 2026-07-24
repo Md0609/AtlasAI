@@ -6,6 +6,8 @@
  */
 import { useEffect, useState } from 'react';
 import { api } from './api';
+import { describeError } from './use-resource';
+import { ErrorState, LoadingState } from './states';
 
 interface ReviewSection {
   type: string;
@@ -25,19 +27,22 @@ interface WeeklyReview {
 export function WeeklyReviewView() {
   const [review, setReview] = useState<WeeklyReview | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     api
       .get<{ data: WeeklyReview | null }>('/v1/weekly-reviews/latest')
       .then((r) => {
         setReview(r.data);
+        // Read receipt only — a failure here changes nothing the user can see.
         if (r.data && !r.data.read_at) api.patch(`/v1/weekly-reviews/${r.data.id}`, {}).catch(() => {});
       })
-      .catch(() => {})
+      .catch((e) => setLoadError(describeError(e)))
       .finally(() => setLoaded(true));
   }, []);
 
-  if (!loaded) return <div className="card">Loading…</div>;
+  if (!loaded) return <div className="card"><LoadingState /></div>;
+  if (loadError) return <div className="card"><ErrorState message={loadError} /></div>;
   if (!review) {
     return (
       <div className="card quiet">

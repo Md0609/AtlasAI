@@ -4,33 +4,62 @@
  * an empty page. Decision buttons on a C0 brief are the §6.2 four buttons;
  * every choice records a decision with a reason (inaction included, §6.3).
  */
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { api, ApiError, type Brief, type Suppression, type Today } from './api';
+import { useResource } from './use-resource';
+import { EmptyState, ErrorState, LoadingState } from './states';
 
-export function TodayView() {
-  const [briefs, setBriefs] = useState<Brief[]>([]);
-  const [suppressions, setSuppressions] = useState<Suppression[]>([]);
-  const [today, setToday] = useState<Today | null>(null);
+interface TodayBundle {
+  briefs: Brief[];
+  suppressions: Suppression[];
+  today: Today;
+}
+
+export function TodayView({ onAddHoldings }: { onAddHoldings?: () => void }) {
   const [showSuppressed, setShowSuppressed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = () =>
-    Promise.all([
-      api.get<{ data: Brief[] }>('/v1/briefs').then((r) => setBriefs(r.data)),
-      api.get<{ data: Suppression[] }>('/v1/suppressions').then((r) => setSuppressions(r.data)),
-      api.get<{ data: Today }>('/v1/today').then((r) => setToday(r.data)),
-    ]).catch(() => {});
-  useEffect(() => {
-    refresh();
-  }, []);
+  const { data, loading, error: loadError, reload } = useResource<TodayBundle>(
+    async () => {
+      const [b, s, t] = await Promise.all([
+        api.get<{ data: Brief[] }>('/v1/briefs'),
+        api.get<{ data: Suppression[] }>('/v1/suppressions'),
+        api.get<{ data: Today }>('/v1/today'),
+      ]);
+      return { briefs: b.data, suppressions: s.data, today: t.data };
+    },
+    [],
+  );
 
+  if (loading) return <div className="card"><LoadingState /></div>;
+  if (loadError) return <div className="card"><ErrorState message={loadError} onRetry={reload} /></div>;
+  if (!data) return null;
+
+  const { briefs, suppressions, today } = data;
+  const refresh = reload;
   const unread = briefs.filter((b) => !b.read_at);
   const theOne = unread[0] ?? null;
   const rest = briefs.filter((b) => b.id !== theOne?.id);
 
+  // Nothing to watch yet: this is a setup state, not a quiet day. Atlas has no
+  // basis to say anything reassuring, so it says what to do instead.
+  if (today.reviewed.holdings === 0) {
+    return (
+      <div className="card">
+        <EmptyState
+          title="Let's start with what you own"
+          action={onAddHoldings && <button onClick={onAddHoldings}>Add your holdings</button>}
+        >
+          Atlas can't tell you anything true until it knows what you hold. Add your positions and
+          the Reality Check runs immediately.
+        </EmptyState>
+      </div>
+    );
+  }
+
   return (
     <div>
-      {today && !today.needs_attention && <QuietDay today={today} />}
+      {!today.needs_attention && <QuietDay today={today} />}
 
       {theOne && (
         <BriefCard
@@ -107,10 +136,13 @@ function QuietDay({ today }: { today: Today }) {
         </>
       )}
 
-      <p className="muted small" style={{ marginTop: 12 }}>
-        You've had {quiet_days.quiet} quiet day{quiet_days.quiet === 1 ? '' : 's'} of your last {quiet_days.of}. That's
-        healthy — most days, nothing should change what a long-term investor does.
-      </p>
+      {/* Only claim a streak once there is enough history to claim one. */}
+      {quiet_days.of >= 7 && (
+        <p className="muted small" style={{ marginTop: 12 }}>
+          You've had {quiet_days.quiet} quiet day{quiet_days.quiet === 1 ? '' : 's'} of your last {quiet_days.of}. That's
+          healthy — most days, nothing should change what a long-term investor does.
+        </p>
+      )}
 
       {open_questions.length > 0 && (
         <div style={{ marginTop: 16 }}>
@@ -133,7 +165,7 @@ function QuietDay({ today }: { today: Today }) {
       )}
 
       <p className="muted small" style={{ marginTop: 16, borderTop: '1px solid var(--line)', paddingTop: 12 }}>
-        Your weekly review is ready {new Date(`${weekly_review.next}T00:00:00Z`).toLocaleDateString(undefined, { weekday: 'long' })}.
+        Your weekly review is ready {new Date(`${weekly_review.next}T00:00:00Z`).toLocaleDateString('en-GB', { weekday: 'long', timeZone: 'UTC' })}.
       </p>
     </div>
   );

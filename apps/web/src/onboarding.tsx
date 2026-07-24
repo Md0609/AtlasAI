@@ -16,6 +16,7 @@ import {
   ApiError,
   type Me,
   type Portfolio,
+  type Profile,
   type RiskScenario,
   type RuleSuggestion,
   type Strategy,
@@ -57,14 +58,15 @@ export function Onboarding({ me, onComplete }: { me: Me; onComplete: () => void 
 
   // Collected along the way; submitted once at the end (FR-2.5: one explicit
   // user action writes the profile).
-  const [capitalBand, setCapitalBand] = useState<(typeof CAPITAL_BANDS)[number]>('25k-100k');
-  const [experience, setExperience] = useState('intermediate');
-  const [horizon, setHorizon] = useState(10);
+  const [capitalBand, setCapitalBand] = useState<(typeof CAPITAL_BANDS)[number] | ''>('');
+  const [experience, setExperience] = useState('');
+  const [horizon, setHorizon] = useState<number | ''>('');
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [statedStrategy, setStatedStrategy] = useState<Strategy | null>(null);
   const [inference, setInference] = useState<StrategyInference | null>(null);
   const [acceptedInference, setAcceptedInference] = useState(false);
   const [riskStated, setRiskStated] = useState(3);
+  const [savedProfile, setSavedProfile] = useState<Profile | null>(null);
   const [scenarios, setScenarios] = useState<RiskScenario[]>([]);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [suggestions, setSuggestions] = useState<RuleSuggestion[]>([]);
@@ -136,7 +138,7 @@ export function Onboarding({ me, onComplete }: { me: Me; onComplete: () => void 
           await api.post('/v1/rules', { type: s.type, params: s.params, stated_reason: reason });
         }
       }
-      await api.post('/v1/profile', {
+      const saved = await api.post<{ data: Profile }>('/v1/profile', {
         experience_level: experience,
         horizon_years: horizon,
         capital_band: capitalBand,
@@ -150,6 +152,7 @@ export function Onboarding({ me, onComplete }: { me: Me; onComplete: () => void 
           .filter((s) => answers[s.scenarioId])
           .map((s) => ({ scenario_id: s.scenarioId, prompt: s.prompt, answer: answers[s.scenarioId]! })),
       });
+      setSavedProfile(saved.data);
       setStep('summary');
     } catch (e) {
       fail(e);
@@ -165,17 +168,22 @@ export function Onboarding({ me, onComplete }: { me: Me; onComplete: () => void 
 
       {step === 'basics' && (
         <div className="card">
-          <h3>Two questions before we start.</h3>
-          <p className="muted">Then your portfolio — the interesting part comes fast.</p>
+          <h3>Three quick questions.</h3>
+          <p className="muted">
+            They calibrate what Atlas shows you. Then your portfolio — the interesting part comes fast.
+          </p>
           <label>
             Roughly how much are you investing?
             <select value={capitalBand} onChange={(e) => setCapitalBand(e.target.value as never)}>
+              <option value="">Choose…</option>
               {CAPITAL_BANDS.map((b) => <option key={b}>{b}</option>)}
             </select>
+            <span className="field-note">Only used to size the examples Atlas shows you.</span>
           </label>
           <label>
             How long have you been investing?
             <select value={experience} onChange={(e) => setExperience(e.target.value)}>
+              <option value="">Choose…</option>
               <option value="beginner">I'm new to this</option>
               <option value="intermediate">A few years</option>
               <option value="advanced">A long time, seriously</option>
@@ -189,10 +197,13 @@ export function Onboarding({ me, onComplete }: { me: Me; onComplete: () => void 
               min={1}
               max={80}
               value={horizon}
-              onChange={(e) => setHorizon(Number(e.target.value) || 10)}
+              placeholder="10"
+              onChange={(e) => setHorizon(e.target.value === '' ? '' : Number(e.target.value))}
             />
           </label>
-          <button onClick={startPortfolio}>Now the important part: what do you own? →</button>
+          <button onClick={startPortfolio} disabled={!capitalBand || !experience || !horizon}>
+            Now the important part: what do you own? →
+          </button>
           {error && <div className="error">{error}</div>}
         </div>
       )}
@@ -359,9 +370,16 @@ export function Onboarding({ me, onComplete }: { me: Me; onComplete: () => void 
 
       {step === 'summary' && (
         <div className="card">
-          <h3>Here's what Atlas noticed.</h3>
+          <h3>Here's what Atlas learned about you.</h3>
           <ul className="plain">
-            <li>· Your profile is saved as version 1 — every future change is versioned, with a reason.</li>
+            {savedProfile && savedProfile.riskRevealed != null && (
+              <li>
+                ·{' '}
+                {savedProfile.riskDivergenceFlag
+                  ? `You called yourself a ${riskStated} out of 5 on risk, but your answers behave like a ${savedProfile.riskRevealed}. Atlas keeps both and will tell you when they disagree — it will never quietly pick one.`
+                  : `Your answers line up with how you describe yourself: about ${savedProfile.riskRevealed} out of 5 on risk. Atlas will tell you if that ever stops being true.`}
+              </li>
+            )}
             {acceptedInference && inference && inference.hypothesis !== 'unknown' && (
               <li>
                 · Strategy recorded as inferred:{' '}
@@ -375,7 +393,7 @@ export function Onboarding({ me, onComplete }: { me: Me; onComplete: () => void 
                 {STRATEGY_CARDS.find((c) => c.key === statedStrategy)?.title ?? statedStrategy}.
               </li>
             )}
-            <li>· Stated and revealed risk are stored separately — if they diverge, Atlas will say so rather than silently picking one.</li>
+            <li>· Nothing here is locked in. Change any of it whenever you like — Atlas keeps the history so you can see how your thinking moved.</li>
             {Object.keys(adoptedRules).length > 0 && (
               <li>· {Object.keys(adoptedRules).length} rule(s) active, evaluated on every portfolio change.</li>
             )}

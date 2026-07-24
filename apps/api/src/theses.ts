@@ -102,7 +102,7 @@ export function registerThesisRoutes(app: FastifyInstance, pool: pg.Pool): void 
     if (!user) return;
     const parsed = thesisSchema.safeParse(req.body);
     if (!parsed.success) {
-      return problem(reply, req, 400, 'validation', 'Invalid thesis payload', parsed.error.issues[0]?.message);
+      return problem(reply, req, 400, 'validation', "Check the thesis details", parsed.error.issues[0]?.message);
     }
     const d = parsed.data;
     const sec = await pool.query(`SELECT id FROM securities WHERE id = $1`, [d.security_id]);
@@ -282,7 +282,7 @@ export function registerThesisRoutes(app: FastifyInstance, pool: pg.Pool): void 
     const { id } = req.params as { id: string };
     const parsed = statusSchema.safeParse(req.body);
     if (!parsed.success) {
-      return problem(reply, req, 400, 'validation', 'Invalid status payload', parsed.error.issues[0]?.message);
+      return problem(reply, req, 400, 'validation', "Check the status change", parsed.error.issues[0]?.message);
     }
     const client = await pool.connect();
     try {

@@ -20,11 +20,12 @@ import { JournalView } from './journal-ui';
 import { CopilotProvider, CopilotHistory, useCopilot, useCopilotSubject } from './copilot-ui';
 import { SettingsPanel } from './settings-ui';
 import { WeeklyReviewView } from './weekly-review-ui';
+import { AddHolding } from './add-holding';
 
 const pct = (w: string | null | undefined, dp = 2) =>
   w == null ? '—' : `${(Number(w) * 100).toFixed(dp)}%`;
 const num = (v: string | null | undefined, dp = 2) =>
-  v == null ? '—' : Number(v).toLocaleString(undefined, { maximumFractionDigits: dp });
+  v == null ? '—' : Number(v).toLocaleString('en-GB', { maximumFractionDigits: dp });
 
 export default function App() {
   const [me, setMe] = useState<Me | null>(null);
@@ -83,8 +84,24 @@ function Auth({ onAuthed }: { onAuthed: (me: Me) => void }) {
       <h1>Atlas</h1>
       <p className="muted">Clarity about what you own.</p>
       <div className="card">
-        <label>Email<input value={email} onChange={(e) => setEmail(e.target.value)} type="email" /></label>
-        <label>Password<input value={password} onChange={(e) => setPassword(e.target.value)} type="password" /></label>
+        <label>
+          Email
+          <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" autoComplete="email" />
+        </label>
+        <label>
+          Password
+          <input
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            type="password"
+            autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+            aria-describedby={mode === 'register' ? 'pw-req' : undefined}
+          />
+          {/* F28: the rule was only ever revealed by failing. */}
+          {mode === 'register' && (
+            <span className="field-note" id="pw-req">At least 10 characters.</span>
+          )}
+        </label>
         {mode === 'register' && (
           <>
             <label>Jurisdiction
@@ -106,6 +123,12 @@ function Auth({ onAuthed }: { onAuthed: (me: Me) => void }) {
         <button className="link" onClick={() => setMode(mode === 'login' ? 'register' : 'login')}>
           {mode === 'login' ? 'Need an account? Register' : 'Have an account? Log in'}
         </button>
+        {mode === 'register' && (
+          <p className="field-note" style={{ marginTop: 12 }}>
+            Atlas never tells you what to buy or sell. Your data is yours — you can export or delete
+            all of it at any time.
+          </p>
+        )}
       </div>
     </div>
   );
@@ -171,7 +194,7 @@ function Home({ me, onLogout }: { me: Me; onLogout: () => void }) {
         <CopilotHint />
       </nav>
 
-      {section === 'today' && <TodayView />}
+      {section === 'today' && <TodayView onAddHoldings={() => setSection('portfolios')} />}
       {section === 'radar' && <RadarPanel />}
       {section === 'review' && <WeeklyReviewView />}
       {section === 'journal' && <JournalView />}
@@ -231,8 +254,9 @@ function PortfolioView({ portfolio, onBack }: { portfolio: Portfolio; onBack: ()
             {t === 'reality' ? 'reality check' : t}
           </button>
         ))}
+        <CopilotHint />
       </nav>
-      {tab === 'reality' && <RealityCheck portfolio={portfolio} />}
+      {tab === 'reality' && <RealityCheck portfolio={portfolio} onAddHoldings={() => setTab('positions')} />}
       {tab === 'positions' && <Positions portfolio={portfolio} />}
       {tab === 'theses' && <ThesisPanel portfolio={portfolio} />}
       {tab === 'exposure' && <Exposure portfolio={portfolio} />}
@@ -275,7 +299,9 @@ function Positions({ portfolio }: { portfolio: Portfolio }) {
     <div className="card">
       <h3>Positions</h3>
       {rows.length === 0 ? (
-        <p className="muted">No positions. Import a CSV or add transactions.</p>
+        <p className="muted">
+          Nothing here yet. Add your holdings one at a time below, or import a file.
+        </p>
       ) : (
         <table>
           <thead><tr><th>Security</th><th>Qty</th><th>Avg cost</th></tr></thead>
@@ -290,15 +316,32 @@ function Positions({ portfolio }: { portfolio: Portfolio }) {
           </tbody>
         </table>
       )}
+      <hr style={{ border: 0, borderTop: '1px solid var(--line)', margin: '20px 0' }} />
+      <AddHolding portfolio={portfolio} onAdded={refresh} />
+
+      <hr style={{ border: 0, borderTop: '1px solid var(--line)', margin: '20px 0' }} />
       <h3>Cash</h3>
-      {cash.length === 0 ? <p className="muted">No cash recorded.</p> : (
+      {cash.length === 0 ? (
+        <p className="muted">
+          No cash recorded. Add it only if you hold uninvested cash — it changes the percentages
+          Atlas shows you.
+        </p>
+      ) : (
         <ul className="plain">
           {cash.map((c) => <li key={c.currency}>{num(c.amount)} {c.currency}</li>)}
         </ul>
       )}
       <div className="inline">
-        <input value={amount} onChange={(e) => setAmount(e.target.value)} />
-        <button onClick={deposit}>Deposit {portfolio.base_currency}</button>
+        <label>
+          Cash held ({portfolio.base_currency})
+          <input
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            inputMode="decimal"
+            aria-label={`Cash held in ${portfolio.base_currency}`}
+          />
+        </label>
+        <button className="secondary" onClick={deposit}>Record cash</button>
       </div>
     </div>
   );

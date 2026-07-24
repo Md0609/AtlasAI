@@ -4,8 +4,9 @@
  * rules — "a journal is authored by you; history happens to you" (§10.4).
  * Entries kept from a Copilot conversation are clearly marked as such (FR-11.6).
  */
-import { useEffect, useState } from 'react';
 import { api, type JournalEntry } from './api';
+import { useResource } from './use-resource';
+import { ErrorState, LoadingState } from './states';
 
 const KIND_LABEL: Record<string, string> = {
   decision: 'Decision',
@@ -18,16 +19,18 @@ const KIND_LABEL: Record<string, string> = {
 };
 
 export function JournalView() {
-  const [entries, setEntries] = useState<JournalEntry[]>([]);
-
-  useEffect(() => {
-    api.get<{ data: JournalEntry[] }>('/v1/journal').then((r) => setEntries(r.data)).catch(() => {});
-  }, []);
+  const { data, loading, error, reload } = useResource<JournalEntry[]>(
+    () => api.get<{ data: JournalEntry[] }>('/v1/journal').then((r) => r.data),
+    [],
+  );
+  const entries = data ?? [];
 
   return (
     <div className="card">
       <h3>Journal</h3>
-      {entries.length === 0 ? (
+      {loading && <LoadingState />}
+      {error && <ErrorState message={error} onRetry={reload} />}
+      {!loading && !error && entries.length === 0 ? (
         <p className="muted">
           Your reasoning history lives here — decisions (including "no change"), the theses you write,
           the rules you set — each with the reason you gave, unedited, forever.

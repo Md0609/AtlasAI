@@ -6,6 +6,7 @@
  */
 import { useEffect, useState } from 'react';
 import { api, ApiError, type Radar, type RadarFire, type SecurityHit } from './api';
+import { describeError } from './use-resource';
 import {
   ConditionBuilder,
   buildAst,
@@ -23,14 +24,14 @@ export function RadarPanel() {
     Promise.all([
       api.get<{ data: Radar[] }>('/v1/radars').then((r) => setRadars(r.data)),
       api.get<{ data: RadarFire[] }>('/v1/radar-fires').then((r) => setFires(r.data)),
-    ]).catch(() => {});
+    ]).catch((e) => setError(describeError(e)));
   useEffect(() => {
     refresh();
   }, []);
 
   const resume = (id: string) =>
-    api.post(`/v1/radars/${id}/resume`).then(refresh).catch(() => {});
-  const archive = (id: string) => api.del(`/v1/radars/${id}`).then(refresh).catch(() => {});
+    api.post(`/v1/radars/${id}/resume`).then(refresh).catch((e) => setError(describeError(e)));
+  const archive = (id: string) => api.del(`/v1/radars/${id}`).then(refresh).catch((e) => setError(describeError(e)));
 
   return (
     <div>
@@ -127,7 +128,7 @@ function RadarForm({ onDone, onError }: { onDone: () => void; onError: (e: strin
         api
           .get<{ data: SecurityHit[] }>(`/v1/securities?query=${encodeURIComponent(query)}`)
           .then((r) => setHits(r.data))
-          .catch(() => {}),
+          .catch((e) => onError(describeError(e))),
       200,
     );
     return () => clearTimeout(t);

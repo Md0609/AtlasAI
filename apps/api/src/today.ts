@@ -77,12 +77,22 @@ export function registerTodayRoutes(app: FastifyInstance, pool: pg.Pool): void {
     );
 
     // The quiet-day streak (§13.4 — "23 quiet days out of your last 30").
+    // The window can never exceed the age of the account: claiming "30 quiet
+    // days" to someone who signed up an hour ago is a fabricated history, and
+    // it discredits the one number meant to make silence trustworthy.
+    const accountAgeDays = Math.floor(
+      Number(
+        (await pool.query(`SELECT EXTRACT(EPOCH FROM (now() - created_at)) / 86400 AS d FROM users WHERE id = $1`, [user.id]))
+          .rows[0].d,
+      ),
+    );
+    const streakWindow = Math.min(STREAK_WINDOW_DAYS, accountAgeDays);
     const daysWithBriefs = Number(
       (
         await pool.query(
           `SELECT count(DISTINCT created_at::date)::int AS n FROM briefs
             WHERE user_id = $1 AND created_at >= now() - ($2 || ' days')::interval`,
-          [user.id, String(STREAK_WINDOW_DAYS)],
+          [user.id, String(streakWindow)],
         )
       ).rows[0].n,
     );
@@ -127,7 +137,8 @@ export function registerTodayRoutes(app: FastifyInstance, pool: pg.Pool): void {
         },
         // The receipt — "show me what you looked at".
         receipt: reviewedRows.map((r) => ({ security_id: r.security_id, name: r.name, updates: Number(r.updates) })),
-        quiet_days: { quiet: STREAK_WINDOW_DAYS - daysWithBriefs, of: STREAK_WINDOW_DAYS },
+        quiet_days: { quiet: Math.max(0, streakWindow - daysWithBriefs), of: streakWindow },
+        account_age_days: accountAgeDays,
         open_questions: openQuestions,
         weekly_review: { next: nextSunday() },
       },

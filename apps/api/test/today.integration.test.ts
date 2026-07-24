@@ -87,9 +87,13 @@ describe('GET /v1/today (quiet day)', () => {
     expect(d.receipt[0].name).toMatch(/Apple/);
     expect(d.receipt[0].updates).toBe(3);
 
-    // Silence is intentional: the quiet-day streak normalizes it (§13.4).
-    expect(d.quiet_days.of).toBe(30);
-    expect(d.quiet_days.quiet).toBe(30); // no briefs at all yet
+    // Silence is intentional: the quiet-day streak normalizes it (§13.4) — but
+    // the window can never exceed the age of the account. A brand-new user has
+    // no history, so Atlas claims none (it used to assert a fabricated "30 of
+    // 30" to an account minutes old).
+    expect(d.account_age_days).toBe(0);
+    expect(d.quiet_days.of).toBe(0);
+    expect(d.quiet_days.quiet).toBe(0);
 
     // Every number is a count over recorded data (US-AI-02).
     expect(res.json().provenance.methodology).toBe('today.v1');
@@ -109,7 +113,8 @@ describe('GET /v1/today (quiet day)', () => {
     expect(d.attention_count).toBeGreaterThan(0);
     expect(d.reviewed.material).toBeGreaterThan(0); // the breach raised a brief
     expect(d.open_questions.some((q: { kind: string }) => q.kind === 'rule_breach')).toBe(true);
-    // A day with a brief is no longer counted as quiet.
-    expect(d.quiet_days.quiet).toBe(29);
+    // Still no fabricated history: the window is bounded by account age.
+    expect(d.quiet_days.of).toBe(0);
+    expect(d.quiet_days.quiet).toBe(0);
   });
 });

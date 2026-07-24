@@ -3,35 +3,61 @@
  * one click away, honest warnings and gaps, provenance footer. Used in
  * onboarding (the aha, D-002) and as a portfolio tab.
  */
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { api, type Portfolio, type RealityCheckResponse } from './api';
+import { useResource } from './use-resource';
+import { EmptyState, ErrorState, LoadingState } from './states';
 
 const pctNum = (w: string) => `${(Number(w) * 100).toFixed(1)}%`;
 
-export function RealityCheck({ portfolio }: { portfolio: Portfolio }) {
-  const [resp, setResp] = useState<RealityCheckResponse | null>(null);
+export function RealityCheck({
+  portfolio,
+  onAddHoldings,
+}: {
+  portfolio: Portfolio;
+  onAddHoldings?: () => void;
+}) {
   const [showOthers, setShowOthers] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const { data: resp, loading, error, reload } = useResource<RealityCheckResponse>(
+    () => api.get<RealityCheckResponse>(`/v1/portfolios/${portfolio.id}/reality-check`),
+    [portfolio.id],
+  );
 
-  useEffect(() => {
-    api
-      .get<RealityCheckResponse>(`/v1/portfolios/${portfolio.id}/reality-check`)
-      .then(setResp)
-      .catch(() => setFailed(true));
-  }, [portfolio.id]);
-
-  if (failed) return <div className="card error">The Reality Check could not be computed.</div>;
-  if (!resp) return <div className="card muted">Computing…</div>;
+  if (loading) return <div className="card"><LoadingState label="Computing your Reality Check…" /></div>;
+  if (error) return <div className="card"><ErrorState message={error} onRetry={reload} /></div>;
+  if (!resp) return null;
   const d = resp.data;
 
+  // Nothing to analyse. Atlas must NOT claim to have checked anything — it
+  // hasn't. Say what is missing and what to do about it.
+  if (Number(d.total_value_base) <= 0) {
+    return (
+      <div className="card">
+        <EmptyState
+          title="Atlas needs your holdings first"
+          action={
+            onAddHoldings && (
+              <button onClick={onAddHoldings}>Add your holdings</button>
+            )
+          }
+        >
+          The Reality Check compares what you think you own against what you actually own. It has
+          nothing to compare yet.
+        </EmptyState>
+      </div>
+    );
+  }
+
+  // Real holdings, nothing surprising. This claim is now true, and it names
+  // only the checks that actually ran.
   if (d.top.length === 0) {
     return (
       <div className="card">
         <h3>Your portfolio is what you think it is.</h3>
         <p className="muted">
-          Atlas checked look-through exposure, effective diversification, currency exposure,
-          correlation clusters and strategy fit — and found nothing you probably didn't already know.
-          That is a good result, not an empty one.
+          Atlas looked through your funds to your real single-name exposure, measured how
+          concentrated you actually are, checked your currency mix and looked for holdings that move
+          together — and found nothing that should surprise you. That is a result, not an empty page.
         </p>
         {resp.warnings.map((w, i) => <div key={i} className="gaps">⚠ {w}</div>)}
       </div>
