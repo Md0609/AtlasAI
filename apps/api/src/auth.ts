@@ -24,6 +24,16 @@ const SESSION_TTL_DAYS = 7;
  * Read per call so a deployment (or a test) can set it without a rebuild.
  */
 function cookieSecure(): boolean {
+  return tlsExpected();
+}
+
+/**
+ * Whether this deployment is expected to be behind TLS. One signal, used by
+ * both the session cookie's Secure flag and HSTS — they must never disagree,
+ * because a Secure cookie without HSTS and HSTS without a Secure cookie are
+ * each half a control.
+ */
+export function tlsExpected(): boolean {
   return process.env.ATLAS_COOKIE_SECURE !== undefined
     ? process.env.ATLAS_COOKIE_SECURE === 'true'
     : process.env.NODE_ENV === 'production';
