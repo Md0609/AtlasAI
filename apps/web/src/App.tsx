@@ -19,6 +19,7 @@ import { RadarPanel } from './radar-ui';
 import { JournalView } from './journal-ui';
 import { CopilotProvider, CopilotHistory, useCopilot, useCopilotSubject } from './copilot-ui';
 import { SettingsPanel } from './settings-ui';
+import { WeeklyReviewView } from './weekly-review-ui';
 
 const pct = (w: string | null | undefined, dp = 2) =>
   w == null ? '—' : `${(Number(w) * 100).toFixed(dp)}%`;
@@ -133,7 +134,7 @@ function Home({ me, onLogout }: { me: Me; onLogout: () => void }) {
 
   // §11.1 primary destinations available at Phase 3: Today, Portfolio,
   // Radar, Journal. Copilot arrives with the intelligence plane (Phase 4b).
-  const [section, setSection] = useState<'today' | 'portfolios' | 'radar' | 'journal' | 'copilot' | 'settings'>('today');
+  const [section, setSection] = useState<'today' | 'portfolios' | 'radar' | 'review' | 'journal' | 'copilot' | 'settings'>('today');
 
   if (profileState === 'loading') return <div className="shell">Loading…</div>;
   if (profileState === 'missing') {
@@ -162,7 +163,7 @@ function Home({ me, onLogout }: { me: Me; onLogout: () => void }) {
         <div className="muted">{me.email} · {me.jurisdiction} <button className="link" onClick={onLogout}>Log out</button></div>
       </header>
       <nav className="tabs">
-        {(['today', 'portfolios', 'radar', 'journal', 'copilot', 'settings'] as const).map((s) => (
+        {(['today', 'portfolios', 'radar', 'review', 'journal', 'copilot', 'settings'] as const).map((s) => (
           <button key={s} className={section === s ? 'tab active' : 'tab'} onClick={() => setSection(s)}>
             {s}
           </button>
@@ -172,6 +173,7 @@ function Home({ me, onLogout }: { me: Me; onLogout: () => void }) {
 
       {section === 'today' && <TodayView />}
       {section === 'radar' && <RadarPanel />}
+      {section === 'review' && <WeeklyReviewView />}
       {section === 'journal' && <JournalView />}
       {section === 'copilot' && <CopilotHistory />}
       {section === 'settings' && <SettingsPanel />}

@@ -9,6 +9,7 @@ import { handleSecurityChanged, handleUserRecompute } from './handlers.js';
 import { handleRadarEvaluate } from './radar-worker.js';
 import { handleBriefGenerate, handleNotifyDispatch } from './brief-worker.js';
 import { handleAccountErasure } from './account-worker.js';
+import { handleWeeklyReview } from './weekly-review-worker.js';
 
 export function buildRunner(pool: pg.Pool): WorkerRunner {
   return new WorkerRunner(pool)
@@ -17,7 +18,8 @@ export function buildRunner(pool: pg.Pool): WorkerRunner {
     .register('radar.evaluate', handleRadarEvaluate)
     .register('brief.generate', handleBriefGenerate)
     .register('notify.dispatch', handleNotifyDispatch)
-    .register('account.erase', handleAccountErasure);
+    .register('account.erase', handleAccountErasure)
+    .register('weekly.review', handleWeeklyReview);
 }
 
 export { WorkerRunner } from './runner.js';
@@ -25,3 +27,10 @@ export { handleSecurityChanged, handleUserRecompute } from './handlers.js';
 export { handleRadarEvaluate } from './radar-worker.js';
 export { handleBriefGenerate, handleNotifyDispatch } from './brief-worker.js';
 export { handleAccountErasure, eraseUser } from './account-worker.js';
+export {
+  handleWeeklyReview,
+  scheduleWeeklyReviews,
+  weekStartUtc,
+  deliveryAtForWeek,
+  type ReviewSection,
+} from './weekly-review-worker.js';

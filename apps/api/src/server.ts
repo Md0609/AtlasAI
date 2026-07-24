@@ -15,6 +15,7 @@ import { registerAccountRoutes } from './account.js';
 import { registerTodayRoutes } from './today.js';
 import { registerJournalRoutes } from './journal.js';
 import { registerMemoryRoutes } from './memory.js';
+import { registerWeeklyReviewRoutes } from './weekly-review.js';
 import { registerPortfolioRoutes } from './portfolios.js';
 import { registerProfileRoutes } from './profile.js';
 import { registerRadarRoutes } from './radars.js';
@@ -73,6 +74,7 @@ export async function buildServer(pool: pg.Pool): Promise<FastifyInstance> {
   registerTodayRoutes(app, pool);
   registerJournalRoutes(app, pool);
   registerMemoryRoutes(app, pool);
+  registerWeeklyReviewRoutes(app, pool);
 
   return app;
 }
