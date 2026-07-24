@@ -5,9 +5,12 @@
   --card: #ffffff;
   --line: #e3e1db;
   --accent: #16493c;
+  --on-accent: #ffffff;      /* text ON an accent fill */
   --warn-bg: #fff6e5;
   --warn-ink: #7a5300;
   --err: #a3352b;
+  --sk-hi: #eeece7;          /* skeleton shimmer highlight */
+  --scrim: rgba(20, 20, 20, 0.35);
 }
 * { box-sizing: border-box; }
 body {
@@ -35,7 +38,7 @@ h1 { font-weight: 600; letter-spacing: 0.01em; }
 }
 button {
   font: inherit; padding: 8px 16px; border-radius: 6px; cursor: pointer;
-  border: 1px solid var(--accent); background: var(--accent); color: #fff;
+  border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent);
   margin-top: 8px;
 }
 button.link {
@@ -49,7 +52,7 @@ button.row {
 button.tab {
   background: none; color: var(--ink); border: 1px solid var(--line); margin-right: 6px;
 }
-button.tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+button.tab.active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .tabs { margin: 12px 0; }
 .inline { display: flex; gap: 8px; align-items: flex-end; }
 .inline input { width: auto; }
@@ -119,7 +122,7 @@ kbd {
   padding: 0 4px; font-family: inherit; font-size: 12px; background: var(--bg);
 }
 .cmdk-backdrop {
-  position: fixed; inset: 0; background: rgba(20, 20, 20, 0.35);
+  position: fixed; inset: 0; background: var(--scrim);
   display: flex; align-items: flex-start; justify-content: center;
   padding-top: 12vh; z-index: 50;
 }
@@ -144,7 +147,7 @@ kbd {
 .cmdk-input input { flex: 1; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
 
 /* Journal / Copilot attribution */
-.badge { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 10px; background: var(--accent); color: #fff; margin-right: 6px; }
+.badge { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 10px; background: var(--accent); color: var(--on-accent); margin-right: 6px; }
 button.link.small { font-size: 12px; margin-top: 6px; }
 
 /* ------------------------------------------------------------------ */
@@ -205,7 +208,7 @@ button.term {
 .term-pop {
   position: absolute; left: 0; top: 1.6em; z-index: 30;
   width: max-content; max-width: min(320px, calc(100vw - 32px));
-  background: var(--ink); color: #fff; font-size: 0.85rem; line-height: 1.45;
+  background: var(--ink); color: var(--bg); font-size: 0.85rem; line-height: 1.45;
   padding: 10px 12px; border-radius: 8px;
   box-shadow: 0 10px 30px rgba(0,0,0,0.22);
   /* Terms sit mid-sentence, so a popover anchored to one near the right edge
@@ -256,7 +259,7 @@ button:disabled, button:disabled:hover {
 /* Keyboard users land on the nav on every screen; this lets them past it. */
 .skip-link {
   position: absolute; left: -9999px; top: 8px; z-index: 100;
-  background: var(--ink); color: #fff;
+  background: var(--ink); color: var(--bg);
   padding: 10px 16px; border-radius: 8px; text-decoration: none;
 }
 .skip-link:focus { left: 8px; }
@@ -364,7 +367,7 @@ h4 { font-size: var(--step-0); line-height: 1.3; }
   height: 12px;
   margin: 10px 0;
   border-radius: 6px;
-  background: linear-gradient(90deg, var(--line) 25%, #eeece7 37%, var(--line) 63%);
+  background: linear-gradient(90deg, var(--line) 25%, var(--sk-hi) 37%, var(--line) 63%);
   background-size: 400% 100%;
   animation: sk-shimmer 1.4s ease-in-out infinite;
 }
@@ -411,3 +414,120 @@ button:not(:disabled):active { transform: translateY(1px); }
 }
 .chip:hover { border-color: var(--accent); color: var(--accent); }
 .cmdk .chips { padding: 0 var(--space-3) var(--space-2); }
+
+/* =====================================================================
+   Phase D — dark mode, forced colours, and print.
+   ===================================================================== */
+
+/* ---- Dark ------------------------------------------------------------
+   Warm near-black rather than pure black or a blue-grey: the light theme
+   is a warm paper, and a cold dark theme would read as a different
+   product. The accent lightens so it still passes contrast on a dark
+   ground, which flips what "text on accent" has to be — hence
+   --on-accent rather than a hardcoded white.
+
+   The values appear twice on purpose. The media query is the default for
+   anyone who has not chosen; [data-theme] is an explicit choice and must
+   beat the system, in both directions. CSS has no way to share one block
+   between two selectors without a preprocessor, so they are duplicated
+   and must be edited together. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #1a1a18;
+    --ink: #ece9e2;
+    --muted: #a8a49b;
+    --card: #232320;
+    --line: #35352f;
+    --accent: #86bda4;
+    --on-accent: #10201a;
+    --warn-bg: #322a16;
+    --warn-ink: #e6c483;
+    --err: #e8877c;
+    --sk-hi: #2c2c27;
+    --scrim: rgba(0, 0, 0, 0.55);
+  }
+}
+:root[data-theme='dark'] {
+  --bg: #1a1a18;
+  --ink: #ece9e2;
+  --muted: #a8a49b;
+  --card: #232320;
+  --line: #35352f;
+  --accent: #86bda4;
+  --on-accent: #10201a;
+  --warn-bg: #322a16;
+  --warn-ink: #e6c483;
+  --err: #e8877c;
+  --sk-hi: #2c2c27;
+  --scrim: rgba(0, 0, 0, 0.55);
+}
+
+/* The tone-gate colours are semantic, not decorative (§18.5): calm must
+   stay calm and light must stay legible on a dark ground. Same two-selector
+   duplication as the palette above, and for the same reason. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .brief.tone-calm { border-left-color: #7fa3c4; }
+  :root:not([data-theme='light']) .brief.tone-light { border-left-color: #d9b563; }
+}
+:root[data-theme='dark'] .brief.tone-calm { border-left-color: #7fa3c4; }
+:root[data-theme='dark'] .brief.tone-light { border-left-color: #d9b563; }
+
+/* ---- Forced colours / high contrast ----------------------------------
+   Windows high-contrast replaces the palette wholesale. Borders that were
+   carrying meaning through colour alone need to survive that. */
+@media (forced-colors: active) {
+  .card, .cmdk, .chip, .term-pop { border: 1px solid CanvasText; }
+  .brief { border-left: 3px solid CanvasText; }
+  button.tab.active { outline: 2px solid CanvasText; }
+  .sk-bar { background: GrayText; }
+}
+
+/* ---- Print -----------------------------------------------------------
+   The Weekly Review and the Reality Check are the two things a person
+   actually wants on paper — for a filing, an adviser, or a tax return.
+   Printing today gives you the navigation and a dark card on white.
+
+   Provenance is deliberately KEPT: a printed figure with no source is
+   exactly the kind of unsourced number this product exists to replace. */
+@media print {
+  :root {
+    --bg: #ffffff;
+    --card: #ffffff;
+    --ink: #000000;
+    --muted: #444444;
+    --line: #bbbbbb;
+    --accent: #000000;
+    --on-accent: #ffffff;
+  }
+  nav, .cmdk-hint, .cmdk-backdrop, .skip-link, .account, .chips { display: none !important; }
+  /* Controls do nothing on paper. */
+  button, .tab { display: none !important; }
+  /* …except the glossary triggers, which are words INSIDE sentences. Hiding
+     them would print "Your  has risen because…" — the term deleted mid-line.
+     They stay, as plain text: a dotted underline promises a hover that paper
+     cannot deliver. */
+  button.term {
+    display: inline !important;
+    text-decoration: none;
+    color: inherit;
+  }
+  .term-pop { display: none !important; }
+  .shell { max-width: none; padding: 0; }
+  .card {
+    border: 1px solid var(--line);
+    box-shadow: none;
+    break-inside: avoid;
+    margin: 0 0 12pt;
+  }
+  .brief, .surprise, .section { break-inside: avoid; }
+  h1, h2, h3, h4 { break-after: avoid; }
+  table { break-inside: auto; }
+  tr { break-inside: avoid; }
+  thead { display: table-header-group; }
+  .provenance { border-top: 1px solid var(--line); color: #333; }
+  a[href]::after { content: ''; }  /* internal SPA links: the URL is noise */
+  .sk-bar { display: none; }
+}
+
+/* ---- Theme control --------------------------------------------------- */
+.theme-choice { display: flex; gap: var(--space-1); flex-wrap: wrap; margin-top: var(--space-1); }

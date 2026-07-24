@@ -11,6 +11,7 @@ import { api, ApiError } from './api';
 import { describeError } from './use-resource';
 import { ErrorState } from './states';
 import { DateText, Skeleton } from './primitives';
+import { applyTheme, getTheme, type Theme } from './theme';
 
 interface MemoryItem {
   id: string;
@@ -77,6 +78,37 @@ function WhatAtlasKnows() {
   );
 }
 
+const THEMES: Array<[Theme, string]> = [
+  ['system', 'Match my system'],
+  ['light', 'Light'],
+  ['dark', 'Dark'],
+];
+
+function Appearance() {
+  const [theme, setTheme] = useState<Theme>(getTheme);
+  const choose = (t: Theme) => {
+    applyTheme(t);
+    setTheme(t);
+  };
+  return (
+    <>
+      <h3 style={{ marginTop: 28 }}>Appearance</h3>
+      <div className="theme-choice" role="group" aria-label="Appearance">
+        {THEMES.map(([key, label]) => (
+          <button
+            key={key}
+            className={theme === key ? 'tab active' : 'tab'}
+            aria-pressed={theme === key}
+            onClick={() => choose(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
 export function SettingsPanel() {
   const [confirm, setConfirm] = useState('');
   const [cert, setCert] = useState<{ certificate: string; scheduled_for: string; note?: string } | null>(null);
@@ -106,6 +138,8 @@ export function SettingsPanel() {
           Download readable document
         </a>
       </div>
+
+      <Appearance />
 
       <WhatAtlasKnows />
 

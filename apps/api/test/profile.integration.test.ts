@@ -194,6 +194,33 @@ describe('scenario calibration (US-ONB-04)', () => {
     const res = await inject({ method: 'GET', url: `/v1/profile/scenarios?capital_band=<25k` });
     expect(res.statusCode).toBe(200);
     expect(res.json().data[0].prompt).toContain('12000');
+    expect(res.json().basis).toBe('capital_band');
+  });
+
+  it('reports which basis it used, so the UI cannot claim a real figure it never had', async () => {
+    // A portfolio_id does NOT mean the portfolio had value. Without this the UI
+    // told a user who skipped the import that a band midpoint was "your actual
+    // portfolio value" (US-AI-02).
+    const withValue = await inject({
+      method: 'GET',
+      url: `/v1/profile/scenarios?portfolio_id=${portfolioId}`,
+    });
+    expect(withValue.json().basis).toBe('portfolio');
+
+    const { rows } = await pool.query(
+      `INSERT INTO portfolios (user_id, name, type, base_currency)
+       SELECT user_id, 'Empty', 'taxable', 'EUR' FROM portfolios WHERE id = $1 RETURNING id`,
+      [portfolioId],
+    );
+    const empty = await inject({
+      method: 'GET',
+      url: `/v1/profile/scenarios?portfolio_id=${rows[0].id}&capital_band=100k-500k`,
+    });
+    expect(empty.json().basis).toBe('capital_band');
+    // …and it uses the band the USER chose, not the default. Sending only
+    // portfolio_id used to silently calibrate to the 25k-100k midpoint.
+    expect(empty.json().data[0].prompt).toContain('250000');
+    expect(empty.json().data[0].prompt).not.toContain('60000');
   });
 });
 
