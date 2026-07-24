@@ -24,9 +24,18 @@ import { registerRuleRoutes } from './rules.js';
 import { registerThesisRoutes } from './theses.js';
 import { registerSignalRoutes } from './signals.js';
 import { problem } from './http.js';
+import { count, loggerOptions, registerObservability } from './observability.js';
 
-export async function buildServer(pool: pg.Pool): Promise<FastifyInstance> {
-  const app = Fastify({ logger: false });
+export async function buildServer(
+  pool: pg.Pool,
+  opts: { logStream?: NodeJS.WritableStream } = {},
+): Promise<FastifyInstance> {
+  const app = Fastify({
+    logger: loggerOptions(opts.logStream),
+    // The trace_id already returned in every problem+json (§31.5) is now the
+    // same id pino stamps on the request, so a user quoting one can be looked up.
+    genReqId: () => randomUUID(),
+  });
   await app.register(cookie);
   // Registered non-globally: only the routes that opt in via `config.rateLimit`
   // are limited (today, the credential endpoints — the brute-force surface).
@@ -37,8 +46,10 @@ export async function buildServer(pool: pg.Pool): Promise<FastifyInstance> {
   app.decorateRequest('user', null);
 
   app.addHook('onRequest', async (req) => {
-    req.traceId = randomUUID();
+    req.traceId = req.id;
   });
+
+  registerObservability(app, pool);
 
   app.addHook('preHandler', async (req) => {
     req.user = await loadUser(pool, req);
@@ -47,8 +58,10 @@ export async function buildServer(pool: pg.Pool): Promise<FastifyInstance> {
   app.setErrorHandler((err, req, reply) => {
     const status = (err as { statusCode?: number }).statusCode ?? 500;
     if (status >= 500) {
-      // eslint-disable-next-line no-console
-      console.error(`[${req.traceId}]`, err);
+      count('atlas_unhandled_errors_total');
+      req.log.error({ err, traceId: req.traceId }, 'unhandled error');
+      // The message is deliberately not echoed: it can carry a query fragment
+      // or a column name. The trace_id is how a user and an engineer meet.
       return problem(reply, req, 500, 'internal', 'Internal error', undefined);
     }
     return problem(reply, req, status, 'request-error', (err as Error).message);
