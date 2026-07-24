@@ -6,11 +6,8 @@
  */
 import { api, type JournalEntry } from './api';
 import { useResource } from './use-resource';
-import { EmptyState, ErrorState, LoadingState } from './states';
-
-/** Same format everywhere in the app, and never the machine's ISO string. */
-const day = (iso: string) =>
-  new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+import { EmptyState, ErrorState } from './states';
+import { DateText, Skeleton } from './primitives';
 
 const KIND_LABEL: Record<string, string> = {
   decision: 'Decision',
@@ -32,7 +29,7 @@ export function JournalView() {
   return (
     <div className="card">
       <h3>Journal</h3>
-      {loading && <LoadingState />}
+      {loading && <Skeleton lines={4} />}
       {error && <ErrorState message={error} onRetry={reload} />}
       {!loading && !error && entries.length === 0 ? (
         <EmptyState title="Nothing recorded yet">
@@ -51,7 +48,7 @@ export function JournalView() {
               </strong>
               <span className="muted">
                 {e.source === 'copilot' && <span className="badge">from Copilot</span>}{' '}
-                {day(e.occurred_at)}
+                <DateText iso={e.occurred_at} />
               </span>
             </div>
             {e.detail && <blockquote>“{e.detail}”</blockquote>}

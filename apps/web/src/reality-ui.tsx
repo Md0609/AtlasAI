@@ -6,10 +6,11 @@
 import { useState } from 'react';
 import { api, type Portfolio, type RealityCheckResponse } from './api';
 import { useResource } from './use-resource';
-import { EmptyState, ErrorState, LoadingState } from './states';
+import { EmptyState, ErrorState } from './states';
 import { Glossed, Term } from './register';
+import { DateText, Skeleton, formatPct } from './primitives';
 
-const pctNum = (w: string) => `${(Number(w) * 100).toFixed(1)}%`;
+const pctNum = (w: string) => formatPct(w, 1);
 
 export function RealityCheck({
   portfolio,
@@ -24,7 +25,7 @@ export function RealityCheck({
     [portfolio.id],
   );
 
-  if (loading) return <div className="card"><LoadingState label="Computing your Reality Check…" /></div>;
+  if (loading) return <div className="card"><Skeleton title lines={4} /></div>;
   if (error) return <div className="card"><ErrorState message={error} onRetry={reload} /></div>;
   if (!resp) return null;
   const d = resp.data;
@@ -109,8 +110,9 @@ export function RealityCheck({
         )}
         <p className="provenance">
           engine {resp.provenance.engineVersion} · {resp.provenance.methodology} · inputs{' '}
-          {resp.provenance.inputHash.slice(0, 12)}… · prices as of {resp.staleness.prices_as_of ?? '—'} ·
-          holdings as of {resp.staleness.holdings_as_of ?? '—'}
+          {resp.provenance.inputHash.slice(0, 12)}… · prices as of{' '}
+          <DateText iso={resp.staleness.prices_as_of} /> · holdings as of{' '}
+          <DateText iso={resp.staleness.holdings_as_of} />
         </p>
       </div>
     </div>

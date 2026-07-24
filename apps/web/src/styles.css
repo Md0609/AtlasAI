@@ -320,3 +320,94 @@ button:disabled, button:disabled:hover {
 .option-group legend { padding: 0 6px; color: var(--ink); font-weight: 600; }
 .option-group .option { display: block; margin: 6px 0; }
 .option-group input { width: auto; display: inline; min-height: 0; margin-right: 4px; }
+
+/* =====================================================================
+   Phase C — polish: a type scale, honest numerals, and skeletons that
+   hold their space.
+   ===================================================================== */
+
+/* ---- Visual hierarchy -------------------------------------------------
+   Sizes were ad hoc, so a section heading and a card heading could render
+   at the same weight and the eye had no path through the page. One scale,
+   applied everywhere. */
+:root {
+  --step--1: 0.85rem;
+  --step-0: 1rem;
+  --step-1: 1.15rem;
+  --step-2: 1.4rem;
+  --step-3: 1.9rem;
+
+  --space-1: 6px;
+  --space-2: 12px;
+  --space-3: 20px;
+  --space-4: 32px;
+}
+
+h1 { font-size: var(--step-3); line-height: 1.15; }
+h2 { font-size: var(--step-2); line-height: 1.2; }
+h3 { font-size: var(--step-1); line-height: 1.25; }
+h4 { font-size: var(--step-0); line-height: 1.3; }
+.small, .provenance, .field-note { font-size: var(--step--1); }
+
+/* Figures line up in a column and don't reflow as digits change — the
+   default proportional figures make a table of percentages wobble. */
+.tnum, table td, table th, .money {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* ---- Skeletons --------------------------------------------------------
+   A bare "Loading…" collapses the layout, then shoves it down when data
+   lands. On a product selling steadiness, that jump is the wrong feeling. */
+.skeleton { padding: var(--space-1) 0; }
+.sk-bar {
+  height: 12px;
+  margin: 10px 0;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--line) 25%, #eeece7 37%, var(--line) 63%);
+  background-size: 400% 100%;
+  animation: sk-shimmer 1.4s ease-in-out infinite;
+}
+.sk-title { height: 18px; width: 42%; margin-bottom: var(--space-2); }
+.sk-row { display: flex; gap: var(--space-2); align-items: center; }
+.sk-row .sk-bar { flex: 1; }
+
+@keyframes sk-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+/* Motion is decoration here; a user who asked for less gets a flat block. */
+@media (prefers-reduced-motion: reduce) {
+  .sk-bar { animation: none; background: var(--line); }
+}
+
+/* ---- Microinteractions ------------------------------------------------
+   Small, and only where they explain something: a disclosure that opens,
+   a button that acknowledges the press. Nothing that celebrates. */
+.section > *:not(.section-head) { animation: fade-rise 180ms ease-out; }
+@keyframes fade-rise {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: none; }
+}
+
+button { transition: background-color 120ms ease, border-color 120ms ease, opacity 120ms ease; }
+button:not(:disabled):active { transform: translateY(1px); }
+
+/* ---- Copilot starter chips -------------------------------------------
+   An empty prompt box asks the user to invent a question about a screen
+   they are still reading. These answer "what can I even ask?". */
+.chips { display: flex; flex-wrap: wrap; gap: var(--space-1); margin: var(--space-2) 0 0; }
+.chip {
+  min-height: 0;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink);
+  font-size: var(--step--1);
+  text-align: left;
+  cursor: pointer;
+}
+.chip:hover { border-color: var(--accent); color: var(--accent); }
+.cmdk .chips { padding: 0 var(--space-3) var(--space-2); }

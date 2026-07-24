@@ -7,9 +7,10 @@
 import { useState } from 'react';
 import { api, ApiError, type Brief, type Suppression, type Today } from './api';
 import { useResource } from './use-resource';
-import { EmptyState, ErrorState, LoadingState } from './states';
+import { EmptyState, ErrorState } from './states';
 import { WeeklyReviewView } from './weekly-review-ui';
 import { Glossed, Term } from './register';
+import { Skeleton, formatWeekday } from './primitives';
 import { ruleLabel } from './rules-ui';
 
 /**
@@ -64,7 +65,7 @@ export function TodayView({ onAddHoldings }: { onAddHoldings?: () => void }) {
     [],
   );
 
-  if (loading) return <div className="card"><LoadingState /></div>;
+  if (loading) return <div className="card"><Skeleton title lines={3} /></div>;
   if (loadError) return <div className="card"><ErrorState message={loadError} onRetry={reload} /></div>;
   if (!data) return null;
 
@@ -242,7 +243,7 @@ function QuietDay({ today }: { today: Today }) {
       )}
 
       <p className="muted small" style={{ marginTop: 16, borderTop: '1px solid var(--line)', paddingTop: 12 }}>
-        Your weekly review is ready {new Date(`${weekly_review.next}T00:00:00Z`).toLocaleDateString('en-GB', { weekday: 'long', timeZone: 'UTC' })}.
+        Your weekly review is ready {formatWeekday(weekly_review.next)}.
       </p>
     </div>
   );

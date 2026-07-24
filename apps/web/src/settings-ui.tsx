@@ -9,7 +9,8 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from './api';
 import { describeError } from './use-resource';
-import { ErrorState, LoadingState } from './states';
+import { ErrorState } from './states';
+import { DateText, Skeleton } from './primitives';
 
 interface MemoryItem {
   id: string;
@@ -50,7 +51,7 @@ function WhatAtlasKnows() {
   return (
     <>
       <h3 style={{ marginTop: 28 }}>What Atlas knows about you</h3>
-      {state.loading && <LoadingState />}
+      {state.loading && <Skeleton lines={3} />}
       {state.error && <ErrorState message={state.error} onRetry={load} />}
       {!state.loading && !state.error && items.length === 0 ? (
         <p className="muted">
@@ -63,7 +64,7 @@ function WhatAtlasKnows() {
             <li key={m.id} style={{ marginBottom: 10 }}>
               <div>{m.content}</div>
               <div className="muted small">
-                {m.security_name ? `${m.security_name} · ` : ''}from {m.source} · {String(m.occurred_at).slice(0, 10)}{' '}
+                {m.security_name ? `${m.security_name} · ` : ''}from {m.source} · <DateText iso={m.occurred_at} />{' '}
                 <button className="link small" onClick={() => forget(m.id)}>
                   Forget this
                 </button>
