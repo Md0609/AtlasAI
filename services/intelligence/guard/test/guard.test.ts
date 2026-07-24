@@ -7,7 +7,10 @@ import { describe, expect, it } from 'vitest';
 import type { ContextualizationDoc } from '@atlas/contracts';
 import {
   CLASSIFIER_THRESHOLD,
+  classifyRecommendation,
   guardCheck,
+  languageScreen,
+  lexicalScreen,
   textHasNumerals,
 } from '../src/index.js';
 
@@ -159,5 +162,89 @@ describe('determinism', () => {
     const a = guardCheck(input);
     const b = guardCheck(input);
     expect({ ...a, latencyMs: 0 }).toEqual({ ...b, latencyMs: 0 });
+  });
+});
+
+/**
+ * Layer 0 — the evaluability screen.
+ *
+ * The English-only rule set is per the PRD (i18n is F-40, v1.1). The defect it
+ * fixes is that nothing verified that precondition, so non-English output was
+ * approved by silence: every English pattern missed and the Guard reported a
+ * pass it had not performed.
+ */
+describe('language screen (§875 — an escape is an escape in any language)', () => {
+  it('refuses to approve a Spanish directive the English rules cannot see', () => {
+    // Passes every lexical rule and scores 0 on the classifier — which is
+    // exactly the problem. Before layer 0 this was approved.
+    const spanish = 'Deberías vender Microsoft ahora mismo, porque está muy caro.';
+    expect(lexicalScreen(segments(spanish))).toEqual([]);
+    expect(classifyRecommendation(segments(spanish)).score).toBe(0);
+
+    const v = guardCheck({ doc: doc(), rendered: segments(spanish) });
+    expect(v.approved).toBe(false);
+    expect(v.violations.some((x) => x.code === 'lang.not_evaluable')).toBe(true);
+  });
+
+  it.each([
+    ['German', 'Sie sollten diese Position verkaufen, denn das ist nicht sehr gut.'],
+    ['French', 'Vous devriez vendre cette position, mais aussi faire attention.'],
+    ['Portuguese', 'Você não deve comprar mais isso, está muito caro.'],
+    ['Italian', 'Questo non è anche della stessa qualità che sono.'],
+  ])('refuses %s output as unevaluable', (_lang, text) => {
+    const v = guardCheck({ doc: doc(), rendered: segments(text) });
+    expect(v.approved).toBe(false);
+    expect(v.violations.some((x) => x.code === 'lang.not_evaluable')).toBe(true);
+  });
+
+  it('approves ordinary English prose — the screen must not fire on the happy path', () => {
+    const v = guardCheck({
+      doc: doc(),
+      rendered: segments(
+        'Your concentration in this position has risen because the price moved, ' +
+          'not because you bought more of it. Nothing here needs a decision today.',
+      ),
+    });
+    expect(v.approved).toBe(true);
+  });
+
+  it('does not trip on foreign SECURITY NAMES inside English prose', () => {
+    // The likeliest false positive, and the one that would degrade real output:
+    // European holdings are named in European languages.
+    const v = guardCheck({
+      doc: doc(),
+      rendered: segments(
+        'Your largest holdings are Telefónica de España, Société Générale, ' +
+          'Banco Santander and La Caixa, and together they are 31% of the portfolio.',
+      ),
+    });
+    expect(v.approved).toBe(true);
+  });
+
+  it("leaves the user's own words alone — a Spanish thesis is the user's prose, not Atlas's", () => {
+    // Quoted spans are masked from every layer for this exact reason (§A4.1).
+    const v = guardCheck({
+      doc: doc(),
+      rendered: [
+        { text: 'When you wrote this thesis you said: ', quoted: false },
+        { text: 'Compro porque el negocio es muy bueno y tiene mucho margen.', quoted: true },
+        { text: ' That condition has now been met.', quoted: false },
+      ],
+    });
+    expect(v.approved).toBe(true);
+  });
+
+  it('rejects long prose with no English grammar in it at all', () => {
+    const v = guardCheck({
+      doc: doc(),
+      rendered: segments('Lorem ipsum dolor sit amet consectetur adipiscing elit sed eiusmod tempor incididunt labore.'),
+    });
+    expect(v.approved).toBe(false);
+    expect(v.violations.some((x) => x.code === 'lang.not_evaluable')).toBe(true);
+  });
+
+  it('stays quiet on short fragments, where detection would be guesswork', () => {
+    expect(languageScreen(segments('Up 3%.'))).toEqual([]);
+    expect(languageScreen(segments(''))).toEqual([]);
   });
 });
