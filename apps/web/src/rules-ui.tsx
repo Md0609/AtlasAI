@@ -6,6 +6,7 @@
  */
 import { useEffect, useState } from 'react';
 import { api, ApiError, type RuleRow, type RuleSuggestion } from './api';
+import { describeError } from './use-resource';
 
 const pctOrRaw = (v: string | null, type: string) => {
   if (v === null) return '—';
@@ -24,17 +25,25 @@ function breachDuration(since: string | null): string {
 export function RulesPanel() {
   const [rules, setRules] = useState<RuleRow[]>([]);
   const [suggestions, setSuggestions] = useState<RuleSuggestion[]>([]);
+  const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
   const [removeReason, setRemoveReason] = useState('');
 
-  const refresh = () => api.get<{ data: RuleRow[] }>('/v1/rules').then((r) => setRules(r.data));
+  const refresh = () =>
+    api
+      .get<{ data: RuleRow[] }>('/v1/rules')
+      .then((r) => setRules(r.data))
+      .catch((e) => setError(describeError(e)));
   useEffect(() => {
     refresh();
     api
       .get<{ data: RuleSuggestion[] }>('/v1/rules/suggestions')
       .then((r) => setSuggestions(r.data))
-      .catch(() => setSuggestions([]));
+      // Suggestions are an enhancement, so a failure here must not take over
+      // the screen — but it must not be rendered as "Atlas has nothing to
+      // suggest" either. That is a claim, and it would be false.
+      .catch((e) => setSuggestionsError(describeError(e)));
   }, []);
 
   const adopt = async (s: RuleSuggestion, reason: string) => {
@@ -108,6 +117,15 @@ export function RulesPanel() {
         {error && <div className="error">{error}</div>}
       </div>
 
+      {suggestionsError && (
+        <div className="card">
+          <h3>Suggested from your actual portfolio</h3>
+          <p className="muted">
+            Atlas couldn't load its suggestions just now, so this list may be incomplete — it is not
+            that there is nothing to suggest.
+          </p>
+        </div>
+      )}
       {suggestions.filter((s) => !active.has(s.type)).length > 0 && (
         <div className="card">
           <h3>Suggested from your actual portfolio</h3>

@@ -22,11 +22,22 @@ import { SettingsPanel } from './settings-ui';
 import { WeeklyReviewView } from './weekly-review-ui';
 import { AddHolding } from './add-holding';
 import { RegisterProvider, Term, useCopy } from './register';
+import { useResource } from './use-resource';
+import { ErrorState } from './states';
+import {
+  DateText,
+  Money,
+  Section,
+  Skeleton,
+  SkeletonTable,
+  formatNumber,
+  formatPct,
+} from './primitives';
 
-const pct = (w: string | null | undefined, dp = 2) =>
-  w == null ? '—' : `${(Number(w) * 100).toFixed(dp)}%`;
-const num = (v: string | null | undefined, dp = 2) =>
-  v == null ? '—' : Number(v).toLocaleString('en-GB', { maximumFractionDigits: dp });
+// Formatting lives in primitives.tsx now — one implementation for the whole
+// app. These aliases keep the call sites in this file readable.
+const pct = formatPct;
+const num = formatNumber;
 
 export default function App() {
   const [me, setMe] = useState<Me | null>(null);
@@ -352,40 +363,25 @@ function PortfolioView({ portfolio, onBack }: { portfolio: Portfolio; onBack: ()
   );
 }
 
-/** A section that shows its headline immediately and its detail on request. */
-function Disclosure({ title, summary, children }: { title: string; summary?: string; children: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="section">
-      <div className="section-head">
-        <h3>{title}</h3>
-        <button className="link" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-          {open ? 'Hide detail' : 'Show detail'}
-        </button>
-      </div>
-      {summary && !open && <p className="summary-line">{summary}</p>}
-      {open && children}
-    </div>
-  );
-}
-
 function Overview({ portfolio, onAddHoldings }: { portfolio: Portfolio; onAddHoldings: () => void }) {
   return (
     <div>
       <RealityCheck portfolio={portfolio} onAddHoldings={onAddHoldings} />
       <div className="card">
-        <Disclosure
+        <Section
+          collapsible
           title="Exposure"
           summary="Where your money actually sits — by sector, country and currency, looked through your funds."
         >
           <Exposure portfolio={portfolio} />
-        </Disclosure>
-        <Disclosure
+        </Section>
+        <Section
+          collapsible
           title="Performance"
           summary="What you earned, and what your timing cost you."
         >
           <Performance portfolio={portfolio} />
-        </Disclosure>
+        </Section>
       </div>
     </div>
   );
@@ -513,16 +509,16 @@ const DIMENSIONS: Array<['sector' | 'country' | 'currency', string]> = [
 
 function Exposure({ portfolio }: { portfolio: Portfolio }) {
   const [dimension, setDimension] = useState<'sector' | 'country' | 'currency'>('sector');
-  const [resp, setResp] = useState<ExposureResponse | null>(null);
+  // Was a bare `.catch(() => setResp(null))`, which rendered "Loading…"
+  // forever on any failure — a broken screen pretending to be a slow one.
+  const { data: resp, loading, error, reload } = useResource<ExposureResponse>(
+    () => api.get<ExposureResponse>(`/v1/portfolios/${portfolio.id}/exposure?dimension=${dimension}`),
+    [portfolio.id, dimension],
+  );
 
-  useEffect(() => {
-    api
-      .get<ExposureResponse>(`/v1/portfolios/${portfolio.id}/exposure?dimension=${dimension}`)
-      .then(setResp)
-      .catch(() => setResp(null));
-  }, [portfolio.id, dimension]);
-
-  if (!resp) return <div className="card muted">Loading…</div>;
+  if (loading) return <div className="card"><SkeletonTable rows={4} cols={2} /></div>;
+  if (error) return <div className="card"><ErrorState message={error} onRetry={reload} /></div>;
+  if (!resp) return null;
   const d = resp.data;
   const dimensionLabel = DIMENSIONS.find(([k]) => k === d.dimension)?.[1] ?? d.dimension;
   return (
@@ -595,19 +591,21 @@ function Exposure({ portfolio }: { portfolio: Portfolio }) {
 }
 
 function Performance({ portfolio }: { portfolio: Portfolio }) {
-  const [resp, setResp] = useState<PerformanceResponse | null>(null);
-  useEffect(() => {
-    api
-      .get<PerformanceResponse>(`/v1/portfolios/${portfolio.id}/performance?method=both`)
-      .then(setResp)
-      .catch(() => setResp(null));
-  }, [portfolio.id]);
+  const { data: resp, loading, error, reload } = useResource<PerformanceResponse>(
+    () => api.get<PerformanceResponse>(`/v1/portfolios/${portfolio.id}/performance?method=both`),
+    [portfolio.id],
+  );
 
-  if (!resp) return <div className="card muted">Loading…</div>;
+  if (loading) return <div className="card"><SkeletonTable rows={4} cols={2} /></div>;
+  if (error) return <div className="card"><ErrorState message={error} onRetry={reload} /></div>;
+  if (!resp) return null;
   if (!resp.data) {
     return (
       <div className="card">
-        <p className="muted">Not enough history yet.</p>
+        <p className="muted">
+          Not enough history yet. Returns need at least two priced days — add earlier transactions
+          or come back tomorrow.
+        </p>
         {resp.gaps.map((g, i) => <div key={i} className="gaps">⚠ {g.reason}</div>)}
       </div>
     );

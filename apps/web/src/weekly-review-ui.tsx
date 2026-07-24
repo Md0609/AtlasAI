@@ -7,7 +7,8 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
 import { describeError } from './use-resource';
-import { ErrorState, LoadingState } from './states';
+import { ErrorState } from './states';
+import { Skeleton } from './primitives';
 
 interface ReviewSection {
   type: string;
@@ -41,7 +42,7 @@ export function WeeklyReviewView() {
       .finally(() => setLoaded(true));
   }, []);
 
-  if (!loaded) return <div className="card"><LoadingState /></div>;
+  if (!loaded) return <div className="card"><Skeleton title lines={5} /></div>;
   if (loadError) return <div className="card"><ErrorState message={loadError} /></div>;
   if (!review) {
     return (

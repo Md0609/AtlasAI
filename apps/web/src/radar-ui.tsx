@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError, type Radar, type RadarFire, type SecurityHit } from './api';
 import { describeError } from './use-resource';
+import { DateText } from './primitives';
 import {
   ConditionBuilder,
   buildAst,
@@ -97,7 +98,7 @@ export function RadarPanel() {
             <tbody>
               {fires.map((f) => (
                 <tr key={f.id}>
-                  <td>{String(f.fired_at).slice(0, 10)}</td>
+                  <td data-label="Fired"><DateText iso={f.fired_at} /></td>
                   <td>{f.radar_name}</td>
                   <td>
                     {f.observed.value ?? '—'} vs {f.observed.target ?? '—'}

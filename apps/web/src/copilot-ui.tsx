@@ -25,6 +25,7 @@ import {
   type CopilotMessage,
   type CopilotThread,
 } from './api';
+import { DateText } from './primitives';
 
 interface Subject {
   type: CopilotContextType;
@@ -40,6 +41,45 @@ interface CopilotCtx {
 }
 
 const GLOBAL_SUBJECT: Subject = { type: 'global', ref: null, label: 'Atlas' };
+
+/**
+ * Opening questions per context (§11.2 — the Copilot is bound to what you are
+ * looking at). Deliberately all questions Atlas can answer from the user's own
+ * data: none of them invites a recommendation, because a starter chip that
+ * prompts "should I sell?" teaches the wrong expectation and then gets refused
+ * by the Guard, which reads as the product being broken rather than principled.
+ */
+const STARTERS: Record<CopilotContextType, string[]> = {
+  portfolio: [
+    'Why is my effective diversification lower than my number of holdings?',
+    'Where is my biggest single-name exposure coming from?',
+    'How much of my return was currency rather than the investments?',
+  ],
+  security: [
+    'Why do I own this?',
+    'How much of my portfolio is this, counting funds?',
+    'What did I say would make me wrong about this?',
+  ],
+  notification: [
+    'Why did you tell me this?',
+    'What changed since the last time?',
+    'Does this touch any rule I set?',
+  ],
+  global: [
+    'What changed in my portfolio this week?',
+    'Which of my rules are closest to breaching?',
+    'What have I written down and then not acted on?',
+  ],
+};
+/** What a past thread was about, in the product's own words rather than the
+ *  context enum ("security", "global") the API stores it under. */
+const THREAD_CONTEXT: Record<CopilotContextType, string> = {
+  portfolio: 'About a portfolio',
+  security: 'About a holding',
+  notification: 'About a brief',
+  global: 'General',
+};
+
 const Ctx = createContext<CopilotCtx | null>(null);
 
 export function CopilotProvider({ children }: { children: ReactNode }) {
@@ -128,8 +168,9 @@ function CommandK({ subject, onClose }: { subject: Subject; onClose: () => void 
     inputRef.current?.focus();
   }, [busy]);
 
-  const send = async () => {
-    const text = draft.trim();
+  /** `preset` lets a starter chip send without round-tripping through the input. */
+  const send = async (preset?: string) => {
+    const text = (preset ?? draft).trim();
     if (!text || !threadId || busy) return;
     setDraft('');
     setMessages((m) => [
@@ -174,16 +215,41 @@ function CommandK({ subject, onClose }: { subject: Subject; onClose: () => void 
             reader never hears it arrive. */}
         <div className="cmdk-body" role="log" aria-live="polite" aria-busy={busy}>
           {error && <div className="error">{error}</div>}
-          {messages.map((m) => (
+          {messages.map((m, i) => (
             <div key={m.id} className={`cmdk-msg ${m.role}`}>
               <div className="cmdk-role">{m.role === 'user' ? 'You' : 'Atlas'}</div>
               <div className="cmdk-content">{m.content || (busy ? '…' : '')}</div>
               {m.guard_approved === false && <div className="muted small">(withheld — could not answer without advice)</div>}
-              {m.role === 'assistant' && m.content && threadId && !busy && (
-                <SaveToJournal threadId={threadId} subject={subject} content={m.content} />
-              )}
+              {/* FR-11.6 offers to keep a material CONCLUSION. The thread opens
+                  with a canned greeting, which is not one — only answers that
+                  followed a question of the user's are worth journaling. */}
+              {m.role === 'assistant' &&
+                m.content &&
+                threadId &&
+                !busy &&
+                messages.slice(0, i).some((p) => p.role === 'user') && (
+                  <SaveToJournal threadId={threadId} subject={subject} content={m.content} />
+                )}
             </div>
           ))}
+          {/* An empty prompt box asks the user to invent a question about a
+              screen they are still reading. These show what Atlas can be asked
+              — and, by omission, what it will not answer. */}
+          {!messages.some((m) => m.role === 'user') && !busy && (
+            <>
+              <p className="muted small">
+                Atlas answers questions about your own portfolio. It won't tell you what to buy or
+                sell.
+              </p>
+              <div className="chips">
+                {STARTERS[subject.type].map((q) => (
+                  <button key={q} className="chip" disabled={!threadId} onClick={() => send(q)}>
+                    {q}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
         <div className="cmdk-input">
           <input
@@ -195,7 +261,9 @@ function CommandK({ subject, onClose }: { subject: Subject; onClose: () => void 
             onKeyDown={(e) => e.key === 'Enter' && send()}
             disabled={!threadId}
           />
-          <button onClick={send} disabled={busy || !draft.trim()}>
+          {/* Called with no argument on purpose: onClick would otherwise hand
+              the MouseEvent to `preset` and send it as the question. */}
+          <button onClick={() => send()} disabled={busy || !draft.trim()}>
             Send
           </button>
         </div>
@@ -282,7 +350,7 @@ export function CopilotHistory() {
             <button className="row" onClick={() => setOpenId(t.id)}>
               <strong>{t.title}</strong>{' '}
               <span className="muted">
-                {t.context_type} · {new Date(t.last_message_at).toLocaleString('en-GB')}
+                {THREAD_CONTEXT[t.context_type] ?? t.context_type} · <DateText iso={t.last_message_at} />
               </span>
             </button>
           </li>

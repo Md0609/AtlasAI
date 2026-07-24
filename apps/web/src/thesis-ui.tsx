@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError, type PositionRow, type Portfolio, type Thesis } from './api';
 import { describeError } from './use-resource';
+import { DateText } from './primitives';
 import {
   ConditionBuilder,
   buildAst,
@@ -60,7 +61,7 @@ export function ThesisPanel({ portfolio }: { portfolio: Portfolio }) {
               <strong>
                 {t.security_name} <span className="muted">v{t.version} · {t.status}</span>
               </strong>
-              <span className="muted">{String(t.created_at).slice(0, 10)}{t.stale ? ' · ⚠ over 12 months old' : ''}</span>
+              <span className="muted"><DateText iso={t.created_at} />{t.stale ? ' · ⚠ over 12 months old' : ''}</span>
             </div>
             <blockquote>“{t.statement}”</blockquote>
             {t.status_reason && <div className="muted">Closed: {t.status_reason}</div>}
@@ -69,7 +70,8 @@ export function ThesisPanel({ portfolio }: { portfolio: Portfolio }) {
                 <li key={c.id}>
                   {c.status === 'met' ? '⚑' : '👁'} “{c.condition_nl}”{' '}
                   <span className="muted">
-                    ({c.rendered}){c.status === 'met' ? ` — met ${String(c.met_at).slice(0, 10)}` : ''}
+                    ({c.rendered})
+                    {c.status === 'met' ? <> — met <DateText iso={c.met_at} /></> : ''}
                   </span>
                 </li>
               ))}
