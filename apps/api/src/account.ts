@@ -44,6 +44,7 @@ async function buildExport(pool: pg.Pool, userId: string): Promise<Record<string
     copilot_threads,
     copilot_messages,
     memory_items,
+    weekly_reviews,
   ] = await Promise.all([
     q(`SELECT id, email, jurisdiction_code, base_currency, created_at FROM users WHERE id = $1`),
     q(`SELECT * FROM profile_versions WHERE user_id = $1 ORDER BY version`),
@@ -64,6 +65,7 @@ async function buildExport(pool: pg.Pool, userId: string): Promise<Record<string
     // FR-10.5: memory is exportable (the embedding vector is a derived artifact,
     // not user content, so the readable item is what ships).
     q(`SELECT id, kind, security_id, content, source, source_ref, occurred_at FROM memory_items WHERE user_id = $1 ORDER BY occurred_at`),
+    q(`SELECT id, week_start, one_thing, sections, generated_at FROM weekly_reviews WHERE user_id = $1 ORDER BY week_start`),
   ]);
   return {
     exported_at: new Date().toISOString(),
@@ -85,6 +87,7 @@ async function buildExport(pool: pg.Pool, userId: string): Promise<Record<string
     copilot_threads,
     copilot_messages,
     memory_items,
+    weekly_reviews,
   };
 }
 

@@ -89,6 +89,14 @@ function validateBudgets(raw: Record<string, unknown>): WeeklyBudget {
     if (typeof n !== 'number' || !Number.isInteger(n) || n < 0) {
       throw new Error(`@atlas/relevance: notification-budgets.json ${persona} must be a non-negative integer`);
     }
+    // §18.6 hard numbers: floor 1, ceiling 6. A config edit cannot make Atlas
+    // louder than the PRD permits.
+    if (n < WEEKLY_BUDGET_FLOOR || n > WEEKLY_BUDGET_CEILING) {
+      throw new Error(
+        `@atlas/relevance: notification-budgets.json ${persona} = ${n} is outside the §18.6 range ` +
+          `[${WEEKLY_BUDGET_FLOOR}, ${WEEKLY_BUDGET_CEILING}]`,
+      );
+    }
     out[persona] = n;
   }
   return out;
@@ -107,7 +115,14 @@ export const DEFAULT_WEIGHTS: Record<Persona, RelevanceWeights> = validateWeight
  * Weekly notification budgets per persona (§18.3), loaded from
  * config/notification-budgets.json. Counts NON-exempt interruptions only; C0
  * is never budgeted away (§18.4). Sits ALONGSIDE the §18.6 2/day hard cap.
+ *
+ * §18.6 fixes the hard numbers this config must respect: base 3/week, floor 1,
+ * ceiling 6. Validation enforces the floor/ceiling so a future edit cannot make
+ * Atlas louder than the PRD permits.
  */
+export const WEEKLY_BUDGET_FLOOR = 1;
+export const WEEKLY_BUDGET_CEILING = 6;
+
 export const WEEKLY_BUDGET: WeeklyBudget = validateBudgets(
   loadConfig<Record<string, unknown>>('notification-budgets.json'),
 );

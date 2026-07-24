@@ -220,7 +220,65 @@ security scoping, deterministic embedder, and the injection proof; 4 API —
 persistence, §30.6 list/delete with cascade + foreign-delete 404, export
 inclusion, erasure). Full suite 323 green.
 
-## Deferred within Phase 5
+## Weekly Review (F-25 / §6.5)
 
-Weekly Review — the remaining sub-feature (explicitly not started this session),
-added to this ADR when it lands.
+"The retention engine", with the design constraint that it must be worth reading
+on a week when nothing happened. `weekly_reviews` (migration 019) holds one row
+per user per week — `UNIQUE (user_id, week_start)` makes generation idempotent
+under retries and overlapping schedulers — plus the `snapshot` that next week's
+diff compares against, so no separate snapshot table is needed.
+
+Sections built (all deterministic, every numeral from recorded data):
+1. **The one thing** — one sentence, priority-ordered: a met falsification
+   condition outranks a rule breach, which outranks a quiet week.
+2. **What changed** — diff vs. last week's stored snapshot (value, cash weight,
+   holdings count); says so plainly when there is no baseline yet.
+3. **What didn't change, and the noise you can ignore** — what Atlas reviewed and
+   what it chose not to send, with the reason (§18.7 / FR-8.3). The
+   highest-trust section.
+4. **Your rules** — adherence, and each breach with the user's own reason quoted
+   back (§14.6).
+5. **Open questions** — theses whose falsification conditions are met.
+
+The assembled template is narrated behind the Guard with the template as the
+permanent degradation path (§B10), exactly like briefs. Delivered in-app (the
+row) and by email; `GET /v1/weekly-reviews[/latest]` + a read receipt, and a
+`review` surface in the web nav.
+
+**Sections 6 and 7 are deliberately not built**: §A5 cuts Learning Mode to a
+hover glossary at MVP, and §51.4 defers the Atlas Scorecard to v1.1 because
+claims must age ("shipping '0 claims graded' is worse than not shipping it")
+while its data capture already ships.
+
+### Key decision — scheduling is a due-based cron sweep, not a self-perpetuating chain
+
+§25.1 lists `weekly_review_generator` as a **cron** ("Sun 06:00 local,
+staggered"), and that turns out to be load-bearing rather than incidental. The
+queue's per-entity ordering (§24.4) blocks a job whenever an *earlier* job on the
+same `partition_key` is pending — **and that check ignores `run_after`**. Parking
+next Sunday's review under `partition_key = user_id` would therefore head-of-line
+block that user's recomputes and briefs for a week. So `scheduleWeeklyReviews()`
+sweeps for reviews that are due *now* and enqueues only immediately-runnable
+jobs; the handler never self-schedules. Delivery is staggered across a 6-hour
+window by a stable hash of the user id (§41.6 thundering herd).
+
+### Other decisions
+
+- **The Weekly Review does not spend the §18.6 notification budget.** That budget
+  governs *unprompted* interruptions; the review is a scheduled digest the user
+  is explicitly told to expect (§13.3). Asserted by test.
+- **`email_outbox.brief_id` became nullable.** The outbox is a *channel* outbox
+  and the review is a legitimate non-brief email (§6.5 / FR-8.5); it previously
+  required a brief.
+
+Verification: +9 integration tests (five sections on a quiet week incl. the
+restraint section and email delivery; budget not spent; idempotency; breached
+rules quoted back; the week-over-week diff once a snapshot exists; read receipt;
+stagger; no future job parked on the user's partition; due-based enqueue that is
+idempotent). Full suite 332 green.
+
+## Phase 5 complete
+
+All six §B1 sub-features have landed: export/delete, suppression transparency,
+quiet-day dashboard states, Journal surfaces, memory hybrid retrieval +
+injection, and the Weekly Review.
