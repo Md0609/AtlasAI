@@ -8,10 +8,14 @@ import { describe, expect, it } from 'vitest';
 import { dec } from '@atlas/domain';
 import type { RelevanceFeatures, RelevanceWeights } from '@atlas/contracts';
 import {
+  BUDGET_EXEMPT_CLASSES,
+  DAILY_CAP_EXEMPT_CLASSES,
   DEFAULT_WEIGHTS,
   WEEKLY_BUDGET,
   enforceWeeklyBudget,
   hasWeeklyBudget,
+  isBudgetExempt,
+  isDailyCapExempt,
   personaFor,
   rankCandidates,
   resolveWeights,
@@ -202,5 +206,44 @@ describe('enforceWeeklyBudget — §18.3 weekly notification budgets', () => {
   it('hasWeeklyBudget reflects the persona cap', () => {
     expect(hasWeeklyBudget('passive_index', WEEKLY_BUDGET.passive_index - 1)).toBe(true);
     expect(hasWeeklyBudget('passive_index', WEEKLY_BUDGET.passive_index)).toBe(false);
+  });
+});
+
+describe('class exemptions (§18.4) — the two sets are not the same set', () => {
+  it('C0, C1 and C2 are all exempt from the weekly budget (§18.4)', () => {
+    // "C0/C1/C2 are budget-exempt because the user asked for them." A rule the
+    // user wrote, a thesis condition they declared, a radar they armed.
+    expect(isBudgetExempt('C0')).toBe(true);
+    expect(isBudgetExempt('C1')).toBe(true);
+    expect(isBudgetExempt('C2')).toBe(true);
+  });
+
+  it('everything Atlas raises unprompted is budgeted (§18.4)', () => {
+    // C3 material event, C4 drift, C5 learning, C6 product.
+    for (const cls of ['C3', 'C4', 'C5', 'C6']) {
+      expect(isBudgetExempt(cls)).toBe(false);
+    }
+  });
+
+  it('the 2/day hard cap exempts C0 and nothing else (§18.6)', () => {
+    expect(isDailyCapExempt('C0')).toBe(true);
+    for (const cls of ['C1', 'C2', 'C3', 'C4', 'C5', 'C6']) {
+      expect(isDailyCapExempt(cls)).toBe(false);
+    }
+  });
+
+  it('the daily-cap exemption is strictly narrower than the weekly one', () => {
+    // The asymmetry is deliberate (§18.4 vs §18.6): a rule breach is never
+    // budgeted away, but it still cannot interrupt you three times in a day.
+    // Guards against a future "cleanup" that collapses the two sets into one.
+    for (const cls of DAILY_CAP_EXEMPT_CLASSES) {
+      expect(BUDGET_EXEMPT_CLASSES).toContain(cls);
+    }
+    expect(DAILY_CAP_EXEMPT_CLASSES.length).toBeLessThan(BUDGET_EXEMPT_CLASSES.length);
+  });
+
+  it('an unknown class is budgeted and capped — the safe default is quiet', () => {
+    expect(isBudgetExempt('C99')).toBe(false);
+    expect(isDailyCapExempt('C99')).toBe(false);
   });
 });

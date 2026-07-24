@@ -12,11 +12,13 @@
  * real provider is a drop-in (ATLAS_LLM_PROVIDER) and degrades to the template
  * on any failure, refusal, numeral drift, or guard rejection.
  *
- * Dispatch discipline (§24.3, §18.6):
+ * Dispatch discipline (§24.3, §18.4, §18.6):
  *   1. dedup-insert (exactly-once user-visible effect) — conflict ⇒ suppress;
- *   2. budget check — C0 is exempt, everything else caps at 2/day, and the
- *      DB trigger enforces it again beneath us;
- *   3. only then: notification rows + email outbox, all one transaction.
+ *   2. daily cap — 2/day, C0 exempt (§18.6), with the DB trigger enforcing it
+ *      again beneath us;
+ *   3. weekly budget — C0, C1 and C2 all exempt (§18.4), because the user asked
+ *      for those; only what Atlas raises unprompted is budgeted;
+ *   4. only then: notification rows + email outbox, all one transaction.
  *
  * Tone gate v0 (§18.5, rule-based per Design §A1.1): decumulation users get
  * 'calm' framing when the subject security sits >10% below its 90-day high —
@@ -28,10 +30,12 @@ import type pg from 'pg';
 import { enqueue, type Job } from '@atlas/bus';
 import { dec } from '@atlas/domain';
 import { narrate, newTraceId } from '@atlas/agents';
+import { isBudgetExempt, isDailyCapExempt } from '@atlas/relevance';
 import {
   computeBriefRelevance,
   effectiveWeeklyBudget,
   personaForUser,
+  weeklyBudgetedCount,
   weeklyDeliveredCount,
 } from './relevance.js';
 
@@ -319,7 +323,11 @@ export async function handleNotifyDispatch(pool: pg.Pool, job: Job): Promise<voi
       return;
     }
 
-    if (brief.class !== 'C0') {
+    // The two budget gates have DIFFERENT exemption sets, and both come
+    // straight from the PRD. §18.6: the 2/day hard cap exempts C0 alone.
+    // §18.4: the weekly budget exempts C0, C1 and C2 — everything the user
+    // explicitly asked to be told about.
+    if (!isDailyCapExempt(brief.class)) {
       const { rows: capRows } = await client.query(
         `SELECT count(*)::int AS n FROM notification_budget_ledger
           WHERE user_id = $1 AND day_bucket = $2::date AND class <> 'C0'`,
@@ -334,14 +342,20 @@ export async function handleNotifyDispatch(pool: pg.Pool, job: Job): Promise<voi
         await client.query('COMMIT');
         return;
       }
+    }
 
-      // §18.3: the persona's WEEKLY budget, on top of the daily cap. The
-      // Relevance Ranker's budget: once the week's allowance of interruptions
-      // is spent, further non-C0 briefs are suppressed (still in the inbox and
-      // the Weekly Review — §28.3 — just not pushed).
+    if (!isBudgetExempt(brief.class)) {
+      // §18.3: the persona's WEEKLY budget, on top of the daily cap. Once the
+      // week's allowance of UNPROMPTED interruptions is spent, further budgeted
+      // briefs are suppressed (still in the inbox and the Weekly Review —
+      // §28.3 — just not pushed).
+      //
+      // Every class the schema can currently store is exempt (§18.4), so today
+      // this gate is unreachable in practice. It stays because the budgeted
+      // classes are C3–C6, and they are what this was written for.
       const persona = await personaForUser(client, userId);
       const weeklyBudget = await effectiveWeeklyBudget(client, userId, persona);
-      const weekCount = await weeklyDeliveredCount(client, userId, day);
+      const weekCount = await weeklyBudgetedCount(client, userId, day);
       if (weekCount >= weeklyBudget) {
         await client.query(
           `INSERT INTO suppressions (user_id, brief_id, class, reason)
@@ -350,7 +364,7 @@ export async function handleNotifyDispatch(pool: pg.Pool, job: Job): Promise<voi
             userId,
             briefId,
             brief.class,
-            `weekly budget: persona '${persona}' allows ${weeklyBudget} non-C0 notifications/week (§18.3)`,
+            `weekly budget: persona '${persona}' allows ${weeklyBudget} budgeted notifications/week (§18.3)`,
           ],
         );
         await client.query('COMMIT');

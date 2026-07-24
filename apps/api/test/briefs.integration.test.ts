@@ -2,8 +2,8 @@
  * Briefs + notifications + decisions (Phase 3): the M3 exit criterion —
  * a falsification condition fires end-to-end (price event → radar →
  * templated brief → email) with provenance and the user's own words —
- * plus dedup, the C0 budget exemption, the 2/day hard cap, C1 rule-breach
- * briefs, suppression logging, and append-only decisions.
+ * plus dedup, the §18.4 C0/C1/C2 budget exemption, the 2/day hard cap, C1
+ * rule-breach briefs, suppression logging, and append-only decisions.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import pg from 'pg';
@@ -18,7 +18,7 @@ import {
 } from '@atlas/ingest';
 import { buildServer } from '@atlas/api';
 import { enqueue } from '@atlas/bus';
-import { buildRunner } from '@atlas/workers';
+import { buildRunner, weeklyBudgetedCount, weeklyDeliveredCount } from '@atlas/workers';
 
 const TEST_URL =
   process.env.ATLAS_TEST_DATABASE_URL ?? 'postgres://atlas:atlas@127.0.0.1:5432/atlas_test';
@@ -309,26 +309,32 @@ describe('C1 rule-breach briefs quote the stated reason (§14.6)', () => {
     expect(after.rows[0].n).toBe(before.rows[0].n);
   });
 
-  it('respects the persona weekly notification budget (§18.3)', async () => {
-    // A user with no profile ⇒ persona 'unknown' ⇒ weekly budget of 5 non-C0
-    // interruptions. Seed the week as already full, then dispatch one more.
+  it('a full week never suppresses C1/C2 — they are budget-exempt (§18.4)', async () => {
+    // §18.4: "C0/C1/C2 are budget-exempt because the user asked for them.
+    // Suppressing a rule the user wrote, a thesis condition they declared, or a
+    // radar they created would break the promise."
+    //
+    // This test previously asserted the opposite — that a 6th C2 in one week was
+    // suppressed by the persona budget. That encoded the implementation, not the
+    // PRD. Only what Atlas raises UNPROMPTED (C3–C6) is budgeted.
     const { rows: u } = await pool.query(
       `INSERT INTO users (email, password_hash, jurisdiction_code, base_currency)
        VALUES ('weekly@example.es','x','ES','EUR') RETURNING id`,
     );
     const uid = u[0].id as string;
 
-    const mkBrief = async (): Promise<string> => {
+    const mkBrief = async (cls: 'C1' | 'C2'): Promise<string> => {
       const { rows } = await pool.query(
-        `INSERT INTO briefs (user_id, class, headline, body) VALUES ($1,'C2','h','b') RETURNING id`,
-        [uid],
+        `INSERT INTO briefs (user_id, class, headline, body) VALUES ($1,$2,'h','b') RETURNING id`,
+        [uid, cls],
       );
       return rows[0].id as string;
     };
 
-    // Seed 5 delivered interruptions in the CURRENT week. Bypass the 2/day
-    // trigger for setup only — we are testing the WEEKLY gate, not the daily
-    // one — and date them off today so the daily cap is a no-op at dispatch.
+    // Seed the week well past ANY persona budget (ceiling is 6/week, §18.6).
+    // Bypass the 2/day trigger for setup only — we are testing the WEEKLY gate,
+    // not the daily one — and date the seeds off today so the daily cap is a
+    // no-op at dispatch.
     //
     // Dates are computed in UTC, exactly as the dispatcher does
     // (`new Date().toISOString().slice(0,10)`). Deriving them from Postgres
@@ -339,8 +345,8 @@ describe('C1 rule-breach briefs quote the stated reason (§14.6)', () => {
     const prevDayUtc = new Date(Date.parse(`${dayUtc}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
     await pool.query(`ALTER TABLE notification_budget_ledger DISABLE TRIGGER notification_budget_trg`);
     try {
-      for (let i = 0; i < 5; i++) {
-        const bid = await mkBrief();
+      for (let i = 0; i < 8; i++) {
+        const bid = await mkBrief('C2');
         await pool.query(
           `INSERT INTO notification_budget_ledger (user_id, brief_id, class, day_bucket, week_bucket)
            VALUES ($1,$2,'C2', $3::date, date_trunc('week', $4::date)::date)`,
@@ -351,25 +357,63 @@ describe('C1 rule-breach briefs quote the stated reason (§14.6)', () => {
       await pool.query(`ALTER TABLE notification_budget_ledger ENABLE TRIGGER notification_budget_trg`);
     }
 
-    // The 6th interruption this week must be suppressed with the §18.3 reason.
-    const sixth = await mkBrief();
-    await enqueue(pool, 'notify.dispatch', uid, { briefId: sixth, userId: uid });
-    const { stats } = await buildRunner(pool).drain();
-    expect(stats.dead).toBe(0);
+    // A radar the user armed and a rule the user wrote, both after the week is
+    // "full". Both must still be delivered.
+    for (const cls of ['C2', 'C1'] as const) {
+      const bid = await mkBrief(cls);
+      await enqueue(pool, 'notify.dispatch', uid, { briefId: bid, userId: uid });
+      const { stats } = await buildRunner(pool).drain();
+      expect(stats.dead).toBe(0);
 
-    const { rows: sup } = await pool.query(
-      `SELECT reason FROM suppressions WHERE user_id = $1 AND brief_id = $2`,
-      [uid, sixth],
+      const { rows: sup } = await pool.query(
+        `SELECT reason FROM suppressions WHERE user_id = $1 AND brief_id = $2`,
+        [uid, bid],
+      );
+      expect(sup.map((r) => r.reason)).toEqual([]);
+
+      const { rows: notif } = await pool.query(
+        `SELECT count(*)::int AS n FROM notifications WHERE brief_id = $1`,
+        [bid],
+      );
+      expect(notif[0].n).toBeGreaterThan(0);
+    }
+  });
+
+  it('exempt classes do not SPEND the weekly budget either (§18.4)', async () => {
+    // "Exempt" has to mean both directions. If a rule breach could not be
+    // budgeted away but still drew down the allowance, a busy week of the
+    // user's own rules would quietly starve the budget for everything Atlas
+    // raises unprompted.
+    const { rows: u } = await pool.query(
+      `INSERT INTO users (email, password_hash, jurisdiction_code, base_currency)
+       VALUES ('spend@example.es','x','ES','EUR') RETURNING id`,
     );
-    expect(sup.length).toBe(1);
-    expect(sup[0].reason).toContain('weekly budget');
-    expect(sup[0].reason).toContain('§18.3');
-    // And it was NOT delivered.
-    const { rows: notif } = await pool.query(
-      `SELECT count(*)::int AS n FROM notifications WHERE brief_id = $1`,
-      [sixth],
-    );
-    expect(notif[0].n).toBe(0);
+    const uid = u[0].id as string;
+
+    const dayUtc = new Date().toISOString().slice(0, 10);
+    const prevDayUtc = new Date(Date.parse(`${dayUtc}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+    await pool.query(`ALTER TABLE notification_budget_ledger DISABLE TRIGGER notification_budget_trg`);
+    try {
+      for (const cls of ['C0', 'C1', 'C2'] as const) {
+        const { rows } = await pool.query(
+          `INSERT INTO briefs (user_id, class, headline, body) VALUES ($1,$2,'h','b') RETURNING id`,
+          [uid, cls],
+        );
+        await pool.query(
+          `INSERT INTO notification_budget_ledger (user_id, brief_id, class, day_bucket, week_bucket)
+           VALUES ($1,$2,$3,$4::date, date_trunc('week', $5::date)::date)`,
+          [uid, rows[0].id, cls, prevDayUtc, dayUtc],
+        );
+      }
+    } finally {
+      await pool.query(`ALTER TABLE notification_budget_ledger ENABLE TRIGGER notification_budget_trg`);
+    }
+
+    // Three exempt deliveries on the ledger, zero budget spent.
+    expect(await weeklyBudgetedCount(pool, uid, dayUtc)).toBe(0);
+    // The relevance feature still sees the interruption load — recent_volume is
+    // about how often Atlas spoke, not about who paid for it (§18.3).
+    expect(await weeklyDeliveredCount(pool, uid, dayUtc)).toBe(2);
   });
 });
 

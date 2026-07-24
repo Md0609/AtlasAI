@@ -34,3 +34,9 @@ export {
   deliveryAtForWeek,
   type ReviewSection,
 } from './weekly-review-worker.js';
+export {
+  effectiveWeeklyBudget,
+  personaForUser,
+  weeklyBudgetedCount,
+  weeklyDeliveredCount,
+} from './relevance.js';
