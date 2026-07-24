@@ -2,7 +2,18 @@
  * Suppression transparency retrain (Phase 5, F-23 / US-NOT-02): "actually, tell
  * me about these next time" raises the user's weekly notification budget so what
  * the Relevance Ranker suppressed gets through next time, and the signal is
- * logged (§28.3). Proven end-to-end through the real dispatcher.
+ * logged (§28.3).
+ *
+ * This test used to drive the whole loop with C2 briefs pushed over the weekly
+ * budget. Per §18.4 that can no longer happen — C0/C1/C2 are budget-exempt —
+ * and the only budgeted classes (C3–C6) are not yet storable: migration 009
+ * constrains `class` to C0/C1/C2 with the note "C3+ arrive with the
+ * intelligence plane".
+ *
+ * So the retrain loop is exercised where it is actually reachable: a seeded
+ * weekly-budget suppression (the row the dispatcher writes for a budgeted
+ * class), the real feedback endpoint, and the real budget resolver — rather
+ * than a C2 the PRD says must always be delivered.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import pg from 'pg';
@@ -10,7 +21,7 @@ import type { FastifyInstance } from 'fastify';
 import { migrate, resetDatabase } from '@atlas/schema';
 import { buildServer } from '@atlas/api';
 import { enqueue } from '@atlas/bus';
-import { buildRunner } from '@atlas/workers';
+import { buildRunner, effectiveWeeklyBudget, personaForUser } from '@atlas/workers';
 
 const TEST_URL =
   process.env.ATLAS_TEST_DATABASE_URL ?? 'postgres://atlas:atlas@127.0.0.1:5432/atlas_test';
@@ -62,24 +73,19 @@ beforeAll(async () => {
   cookie = String(reg.headers['set-cookie']).split(';')[0]!;
   userId = reg.json().id;
 
-  // No profile ⇒ 'unknown' persona ⇒ weekly budget 3 (§18.6 base). Fill this
-  // week so the next non-C0 brief is over budget (dates in UTC, matching the
-  // dispatcher).
-  const dayUtc = new Date().toISOString().slice(0, 10);
-  const prevDayUtc = new Date(Date.parse(`${dayUtc}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
-  await pool.query(`ALTER TABLE notification_budget_ledger DISABLE TRIGGER notification_budget_trg`);
-  try {
-    for (let i = 0; i < 3; i++) {
-      const bid = await mkBrief();
-      await pool.query(
-        `INSERT INTO notification_budget_ledger (user_id, brief_id, class, day_bucket, week_bucket)
-         VALUES ($1,$2,'C2',$3::date, date_trunc('week',$4::date)::date)`,
-        [userId, bid, prevDayUtc, dayUtc],
-      );
-    }
-  } finally {
-    await pool.query(`ALTER TABLE notification_budget_ledger ENABLE TRIGGER notification_budget_trg`);
-  }
+  // The suppression the dispatcher writes when a BUDGETED brief runs out of
+  // weekly allowance — seeded directly, because no budgeted class is storable
+  // yet (see the file header). The reason string is the dispatcher's own.
+  const bid = await mkBrief(await mkSecurity('OverBudgetCo'));
+  await pool.query(
+    `INSERT INTO suppressions (user_id, brief_id, class, reason)
+     VALUES ($1,$2,'C2',$3)`,
+    [
+      userId,
+      bid,
+      "weekly budget: persona 'unknown' allows 3 budgeted notifications/week (§18.3)",
+    ],
+  );
 });
 
 afterAll(async () => {
@@ -88,11 +94,10 @@ afterAll(async () => {
 });
 
 describe('suppression transparency + retrain (US-NOT-02)', () => {
-  it('suppresses over budget, then "tell me next time" lets the next one through', async () => {
-    // 4th interruption this week ⇒ suppressed by the weekly budget (3).
-    const fourth = await mkBrief(await mkSecurity('FourCo'));
-    await dispatch(fourth);
-    expect(await deliveredCount(fourth)).toBe(0);
+  it('"tell me next time" raises the weekly budget and logs the signal', async () => {
+    // No profile ⇒ 'unknown' persona ⇒ base weekly budget of 3 (§18.6).
+    const persona = await personaForUser(pool, userId);
+    expect(await effectiveWeeklyBudget(pool, userId, persona)).toBe(3);
 
     // The suppression is a first-class, visible resource with a reason.
     const list = await inject({ method: 'GET', url: '/v1/suppressions' });
@@ -108,10 +113,16 @@ describe('suppression transparency + retrain (US-NOT-02)', () => {
     const fbCount = await pool.query(`SELECT count(*)::int n FROM notification_feedback WHERE user_id=$1`, [userId]);
     expect(fbCount.rows[0].n).toBe(1);
 
-    // Now the budget is 4, only 3 delivered this week ⇒ the next one gets through.
-    const fifth = await mkBrief(await mkSecurity('FifthCo'));
-    await dispatch(fifth);
-    expect(await deliveredCount(fifth)).toBe(2); // in_app + email
+    // …and the delta is actually applied to the budget the dispatcher reads.
+    expect(await effectiveWeeklyBudget(pool, userId, persona)).toBe(4);
+  });
+
+  it('a C2 radar fire is delivered regardless of the week (§18.4)', async () => {
+    // The user armed this radar. The budget above has nothing to say about it —
+    // this is the guarantee the old version of this test contradicted.
+    const armed = await mkBrief(await mkSecurity('ArmedCo'));
+    await dispatch(armed);
+    expect(await deliveredCount(armed)).toBe(2); // in_app + email
   });
 
   it('404s feedback on a suppression the user does not own', async () => {

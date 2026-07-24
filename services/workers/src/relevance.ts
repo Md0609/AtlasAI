@@ -16,6 +16,7 @@ import type pg from 'pg';
 import type { RelevanceFeatures, RelevanceWeights, Strategy } from '@atlas/contracts';
 import { dec, str } from '@atlas/domain';
 import {
+  BUDGET_EXEMPT_CLASSES,
   personaFor,
   resolveWeights,
   scoreRelevance,
@@ -73,7 +74,14 @@ export async function effectiveWeeklyBudget(
   return Math.max(0, weeklyBudgetFor(persona) + delta);
 }
 
-/** Non-C0 interruptions already delivered to the user in the current week. */
+/**
+ * Non-C0 interruptions already delivered to the user in the current week.
+ *
+ * This is the `recent_volume` relevance feature (§18.3) — a measure of how much
+ * Atlas has interrupted this person lately, which is why it counts every
+ * interruption they actually received regardless of budget class. It is NOT the
+ * budget counter; for that see weeklyBudgetedCount.
+ */
 export async function weeklyDeliveredCount(
   db: pg.Pool | pg.PoolClient,
   userId: string,
@@ -84,6 +92,28 @@ export async function weeklyDeliveredCount(
       WHERE user_id = $1 AND class <> 'C0'
         AND week_bucket = date_trunc('week', $2::date)::date`,
     [userId, day],
+  );
+  return rows[0].n;
+}
+
+/**
+ * Deliveries that SPENT weekly budget this week (§18.3 + §18.4).
+ *
+ * Excludes the exempt classes: if a rule breach could not be budgeted away but
+ * still drew down the allowance, the user's own rules would quietly starve the
+ * budget for everything Atlas raises unprompted — which is the opposite of what
+ * "budget-exempt" means.
+ */
+export async function weeklyBudgetedCount(
+  db: pg.Pool | pg.PoolClient,
+  userId: string,
+  day: string,
+): Promise<number> {
+  const { rows } = await db.query(
+    `SELECT count(*)::int AS n FROM notification_budget_ledger
+      WHERE user_id = $1 AND NOT (class = ANY($3))
+        AND week_bucket = date_trunc('week', $2::date)::date`,
+    [userId, day, [...BUDGET_EXEMPT_CLASSES]],
   );
   return rows[0].n;
 }

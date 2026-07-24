@@ -111,10 +111,46 @@ export const DEFAULT_WEIGHTS: Record<Persona, RelevanceWeights> = validateWeight
   loadConfig<Record<string, unknown>>('persona-weights.json'),
 );
 
+// ---------------------------------------------------------------------------
+// Class exemptions (§18.4). Two DIFFERENT sets, deliberately.
+// ---------------------------------------------------------------------------
+
+/**
+ * §18.4 — "C0/C1/C2 are budget-exempt because the user asked for them."
+ *
+ * A rule the user wrote, a thesis condition they declared, a radar they armed:
+ * suppressing any of these would break the promise that made them set it up.
+ * So they are neither blocked by the weekly budget nor do they spend it —
+ * "exempt" has to mean both, or a busy week of rule breaches would silently
+ * consume the allowance meant for what Atlas raises on its own.
+ *
+ * Everything Atlas generates UNPROMPTED is budgeted: C3 material event,
+ * C4 portfolio drift, C5 learning, C6 product.
+ */
+export const BUDGET_EXEMPT_CLASSES: readonly string[] = ['C0', 'C1', 'C2'];
+
+export function isBudgetExempt(briefClass: string): boolean {
+  return BUDGET_EXEMPT_CLASSES.includes(briefClass);
+}
+
+/**
+ * §18.6 — "Hard cap: 2 / day, always, no exemption except C0."
+ *
+ * Narrower than the weekly exemption above, and that asymmetry is the PRD's,
+ * not an oversight: a rule breach never gets budgeted away, but it still cannot
+ * interrupt you more than twice in a day. Anyone tempted to unify these two
+ * sets should read both sections first.
+ */
+export const DAILY_CAP_EXEMPT_CLASSES: readonly string[] = ['C0'];
+
+export function isDailyCapExempt(briefClass: string): boolean {
+  return DAILY_CAP_EXEMPT_CLASSES.includes(briefClass);
+}
+
 /**
  * Weekly notification budgets per persona (§18.3), loaded from
- * config/notification-budgets.json. Counts NON-exempt interruptions only; C0
- * is never budgeted away (§18.4). Sits ALONGSIDE the §18.6 2/day hard cap.
+ * config/notification-budgets.json. Counts BUDGETED interruptions only — see
+ * BUDGET_EXEMPT_CLASSES (§18.4). Sits ALONGSIDE the §18.6 2/day hard cap.
  *
  * §18.6 fixes the hard numbers this config must respect: base 3/week, floor 1,
  * ceiling 6. Validation enforces the floor/ceiling so a future edit cannot make
