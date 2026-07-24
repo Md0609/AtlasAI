@@ -28,6 +28,8 @@ const HARD_DELETE: Array<[string, string]> = [
   // decisions first: it references briefs, theses and copilot_threads, all of
   // which are deleted below (and nothing references decisions).
   ['decisions', `DELETE FROM decisions WHERE user_id = $1`],
+  // memory_embeddings + memory_links cascade from memory_items (FR-10.5).
+  ['memory_items', `DELETE FROM memory_items WHERE user_id = $1`],
   ['notification_feedback', `DELETE FROM notification_feedback WHERE user_id = $1`],
   ['user_notification_prefs', `DELETE FROM user_notification_prefs WHERE user_id = $1`],
   ['copilot_messages', `DELETE FROM copilot_messages WHERE user_id = $1`],

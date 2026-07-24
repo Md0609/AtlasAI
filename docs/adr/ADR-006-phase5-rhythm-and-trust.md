@@ -163,8 +163,64 @@ Verification: +5 integration tests (unified timeline + security filter; Copilot
 attribution linking back to the thread; rejects a copilot decision with no /
 foreign thread; decisions still immutable). Full suite 312 green.
 
+## Memory — hybrid retrieval + injection (F-30 / §30 / FR-10)
+
+`memory_items` + `memory_embeddings` + `memory_links` (migration 018), the §28 ER
+model. §30.2 is emphatic that "the semantic layer is the moat and it is mostly
+NOT embeddings", so the table holds only the **episodic free text** that isn't
+otherwise structured-queryable (material Copilot exchanges); theses, rules and
+decisions stay live rows.
+
+**Retrieval (§30.3), structured-first and structured-PINNED (D-013):**
+`retrieveMemory` always runs the deterministic `SELECT ... WHERE user_id = $1`
+for the user's rules (+ latest status), active theses and recent decisions, and
+those are never evicted. The **semantic** layer — cosine over the user's own
+embedded items, reranked `0.7·similarity + 0.3·recency` — is what the token
+budget evicts first. Rationale is the spec's: forgetting a vague conversation
+costs a colder answer; forgetting a hard rule "proves Atlas doesn't know them".
+
+**Injection (FR-10.3):** the rendered bundle rides in the Copilot system prompt,
+and its numerals join the numeral-preservation allow-list (they are the user's
+own provenanced figures). Proven by a test that captures the exact system prompt
+the provider receives.
+
+**Persistence (FR-10.1):** guard-approved Copilot turns are stored as memory
+items with their thread as `source_ref`.
+
+**Visibility (§30.6):** `GET /v1/memory` lists what Atlas knows with source and
+date; `DELETE /v1/memory/:id` forgets an item (embedding cascades). Rendered in
+Settings → "What Atlas knows about you".
+
+**Tenant isolation (FR-10.6):** every read and write is scoped to the session
+user; tested in both directions.
+
+### Deviation — vector store behind an interface, not pgvector (yet)
+
+The PRD names pgvector + HNSW (§30.3, index list). pgvector is **not available
+for the PostgreSQL 16 this environment runs** (Homebrew bottles ship for 17/18
+only). D-013 / line 4188 anticipates exactly this: *"Retrieval behind an
+interface; structured memory unaffected."* So the embedding is a plain `real[]`
+column with cosine computed over the user's own bounded item set — correct and
+tenant-isolated at MVP scale — behind the runtime's `Embedder` abstraction.
+Swapping in pgvector + HNSW is a storage change behind the same interface with
+no caller impact, and is the documented production step (§41.6). The embedder
+itself is the §B8 deterministic mock (`HashEmbedder`), a drop-in for a real
+embedding model.
+
+### Deferred (per §51.4)
+
+The nightly **consolidator** (§30.5 — promoting 3+ episodic instances into
+semantic patterns, surfacing contradictions) is not built: it needs aged data,
+and §51.4 defers pattern detection to v1.1 while shipping the data capture now —
+which is exactly what `memory_items` does.
+
+Verification: +11 tests (7 retrieval — structured always present, semantic
+ranking, tenant isolation both ways, budget eviction preserving pinned facts,
+security scoping, deterministic embedder, and the injection proof; 4 API —
+persistence, §30.6 list/delete with cascade + foreign-delete 404, export
+inclusion, erasure). Full suite 323 green.
+
 ## Deferred within Phase 5
 
-Weekly Review and memory hybrid retrieval + injection — the remaining two
-sub-features (explicitly not started this session), added to this ADR when they
-land.
+Weekly Review — the remaining sub-feature (explicitly not started this session),
+added to this ADR when it lands.

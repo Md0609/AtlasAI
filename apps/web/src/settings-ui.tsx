@@ -6,8 +6,61 @@
  * dark patterns, no retention offer) but does require a typed confirmation, and
  * it shows the certificate the API returns.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, ApiError } from './api';
+
+interface MemoryItem {
+  id: string;
+  kind: string;
+  content: string;
+  source: string;
+  security_name: string | null;
+  occurred_at: string;
+}
+
+/**
+ * §30.6 — "What Atlas knows about you". An AI with an invisible model of you is
+ * creepy; a visible, editable one is a tool. Every item shows what it is, where
+ * it came from and when, and is individually deletable.
+ */
+function WhatAtlasKnows() {
+  const [items, setItems] = useState<MemoryItem[]>([]);
+  const load = () => api.get<{ data: MemoryItem[] }>('/v1/memory').then((r) => setItems(r.data)).catch(() => {});
+  useEffect(() => {
+    load();
+  }, []);
+
+  const forget = async (id: string) => {
+    await api.del(`/v1/memory/${id}`);
+    load();
+  };
+
+  return (
+    <>
+      <h3 style={{ marginTop: 28 }}>What Atlas knows about you</h3>
+      {items.length === 0 ? (
+        <p className="muted">
+          Nothing remembered yet. As you talk to Atlas, the exchanges worth keeping appear here — and you can
+          delete any of them.
+        </p>
+      ) : (
+        <ul className="plain">
+          {items.map((m) => (
+            <li key={m.id} style={{ marginBottom: 10 }}>
+              <div>{m.content}</div>
+              <div className="muted small">
+                {m.security_name ? `${m.security_name} · ` : ''}from {m.source} · {String(m.occurred_at).slice(0, 10)}{' '}
+                <button className="link small" onClick={() => forget(m.id)}>
+                  Forget this
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+}
 
 export function SettingsPanel() {
   const [confirm, setConfirm] = useState('');
@@ -38,6 +91,8 @@ export function SettingsPanel() {
           Download readable document
         </a>
       </div>
+
+      <WhatAtlasKnows />
 
       <h3 style={{ marginTop: 28 }}>Delete your account</h3>
       {cert ? (

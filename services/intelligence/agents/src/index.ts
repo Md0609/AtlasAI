@@ -31,6 +31,15 @@ export {
 } from './regeneration.js';
 export { narrate, type NarrateInput, type NarrateResult } from './narration.js';
 export {
+  rememberExchange,
+  retrieveMemory,
+  type MemoryItem,
+  type MemoryBundle,
+  type StructuredFact,
+  type RememberInput,
+  type RetrieveInput,
+} from './memory.js';
+export {
   buildCopilotContext,
   answerCopilot,
   CopilotContextError,

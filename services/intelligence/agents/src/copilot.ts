@@ -31,6 +31,7 @@ import { loadConsolidatedInputs } from '@atlas/dataplane';
 import { computePortfolioSignals } from '@atlas/signal-engine';
 import { makePgGuardRecorder, renderNarration } from '@atlas/egress';
 import { buildSecurityContext, buildUserBundle, type UserBundle } from './context.js';
+import { retrieveMemory } from './memory.js';
 import './prompts.js'; // side-effect: register the copilot prompt
 
 export type CopilotContextType = 'security' | 'portfolio' | 'notification' | 'global';
@@ -232,9 +233,23 @@ export async function answerCopilot(db: Db, input: CopilotTurnInput): Promise<Co
   const provider = input.provider ?? getProvider();
   const fallback = groundedFallback(input.context, input.userMessage);
 
+  // Memory injection (FR-10.3): the user's own rules/theses/decisions (pinned)
+  // plus relevant past conversation, retrieved under a token budget and injected
+  // into context. Tenant-isolated by construction (retrieveMemory scopes to the
+  // user). Its numerals are the user's own provenanced figures, so they join the
+  // allow-list for the numeral-preservation gate.
+  const memory = await retrieveMemory(db, {
+    userId: input.userId,
+    query: input.userMessage,
+    securityId: input.context.type === 'security' ? input.context.ref : null,
+  });
+  const allowedNumerals = [...input.context.allowedNumerals, ...numeralsIn(memory.text)];
+
   // Context is ALWAYS loaded (§11.2): it rides in the system prompt for this
   // call, so the model has it on turn one without the user restating anything.
-  const system = `${prompt.sections.system}\n\nCONTEXT BUNDLE (ground truth):\n${input.context.preamble}`;
+  const system =
+    `${prompt.sections.system}\n\nCONTEXT BUNDLE (ground truth):\n${input.context.preamble}` +
+    (memory.text ? `\n\nMEMORY (what Atlas remembers about this user):\n${memory.text}` : '');
 
   const messages: LlmMessage[] = [
     ...input.history.map((m) => ({ role: m.role, content: m.content })),
@@ -282,8 +297,8 @@ export async function answerCopilot(db: Db, input: CopilotTurnInput): Promise<Co
   }
 
   // Gate 2: numeral-preservation — the answer may only use figures the context
-  // actually contains (guardText does not run the structural numbers check).
-  if (!numeralsSubset(text, input.context.allowedNumerals)) {
+  // or memory actually contains (guardText does not run the structural check).
+  if (!numeralsSubset(text, allowedNumerals)) {
     text = fallback;
     degraded = true;
   }

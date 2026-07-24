@@ -41,6 +41,7 @@ export {
   type ProviderName,
 } from './providers/factory.js';
 export { runAgent, type RunAgentInput, type RunAgentResult } from './run.js';
+export { HashEmbedder, getEmbedder, setEmbedderForTests, cosine, type Embedder } from './embedder.js';
 export {
   cacheGet,
   cachePut,
