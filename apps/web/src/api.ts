@@ -81,8 +81,17 @@ export interface Today {
   reviewed: { holdings: number; updates: number; material: number; window_days: number };
   receipt: Array<{ security_id: string; name: string; updates: number }>;
   quiet_days: { quiet: number; of: number };
-  open_questions: Array<{ kind: string; text: string; security?: string; observed?: unknown }>;
+  open_questions: Array<{
+    kind: string;
+    text: string;
+    security?: string;
+    /** Rule breaches carry their params so Today can name the rule the way the
+     *  Rules tab does, instead of printing the internal type. */
+    params?: Record<string, unknown>;
+    observed?: unknown;
+  }>;
   weekly_review: { next: string };
+  account_age_days: number;
 }
 
 export const copilot = {

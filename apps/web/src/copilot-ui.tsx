@@ -155,16 +155,24 @@ function CommandK({ subject, onClose }: { subject: Subject; onClose: () => void 
 
   return (
     <div className="cmdk-backdrop" onClick={onClose}>
-      <div className="cmdk" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="cmdk"
+        role="dialog"
+        aria-modal="true"
+        aria-label={subject.type === 'global' ? 'Atlas Copilot' : `Copilot — ${subject.label}`}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="cmdk-head">
           <span className="cmdk-subject">
             {subject.type === 'global' ? 'Atlas Copilot' : `Copilot · ${subject.label}`}
           </span>
-          <button className="link" onClick={onClose}>
+          <button className="link" aria-label="Close Copilot" onClick={onClose}>
             Esc
           </button>
         </div>
-        <div className="cmdk-body">
+        {/* The answer streams in token by token; without a live region a screen
+            reader never hears it arrive. */}
+        <div className="cmdk-body" role="log" aria-live="polite" aria-busy={busy}>
           {error && <div className="error">{error}</div>}
           {messages.map((m) => (
             <div key={m.id} className={`cmdk-msg ${m.role}`}>
@@ -181,6 +189,7 @@ function CommandK({ subject, onClose }: { subject: Subject; onClose: () => void 
           <input
             ref={inputRef}
             value={draft}
+            aria-label={`Ask Atlas about ${subject.label}`}
             placeholder={busy ? 'Loading context…' : `Ask about ${subject.label}…`}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && send()}

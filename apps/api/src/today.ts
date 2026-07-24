@@ -110,7 +110,9 @@ export function registerTodayRoutes(app: FastifyInstance, pool: pg.Pool): void {
     ).rows;
     const breachedRules = (
       await pool.query(
-        `SELECT r.rule_type AS text,
+        // params travel with the type so the UI can name the rule the way the
+        // user wrote it ("Max 25% in a single name"), not by its internal code.
+        `SELECT r.rule_type AS text, r.params,
                 (SELECT e.observed FROM rule_evaluations e WHERE e.rule_id = r.id
                   ORDER BY e.evaluated_at DESC LIMIT 1) AS observed
            FROM rules r
@@ -122,7 +124,12 @@ export function registerTodayRoutes(app: FastifyInstance, pool: pg.Pool): void {
     ).rows;
     const openQuestions = [
       ...metConditions.map((r) => ({ kind: 'thesis_condition', text: r.text, security: r.security })),
-      ...breachedRules.map((r) => ({ kind: 'rule_breach', text: r.text, observed: r.observed })),
+      ...breachedRules.map((r) => ({
+        kind: 'rule_breach',
+        text: r.text,
+        params: r.params,
+        observed: r.observed,
+      })),
     ];
 
     return reply.send({

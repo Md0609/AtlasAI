@@ -183,7 +183,12 @@ function RadarForm({ onDone, onError }: { onDone: () => void; onError: (e: strin
             </div>
           ) : (
             <>
-              <input placeholder="Search name or ticker" value={query} onChange={(e) => setQuery(e.target.value)} />
+              <input
+                aria-label="Search for a security by name or ticker"
+                placeholder="Search name or ticker"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
               {hits.length > 0 && (
                 <ul className="plain">
                   {hits.slice(0, 6).map((h) => (

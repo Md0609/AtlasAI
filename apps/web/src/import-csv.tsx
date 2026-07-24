@@ -98,11 +98,32 @@ export function ImportCsv({ portfolio, onDone }: { portfolio: Portfolio; onDone:
           </div>
         </>
       )}
-      <label className="option">
-        <input type="checkbox" checked={assumeFunded} onChange={(e) => setAssumeFunded(e.target.checked)} />{' '}
-        My deposits aren't in this file — treat each buy as funded (recommended when importing
-        holdings from a broker)
-      </label>
+      <fieldset className="option-group">
+        <legend>Does this file also include the cash you paid in?</legend>
+        <label className="option">
+          <input
+            type="radio"
+            name="funding"
+            checked={!assumeFunded}
+            onChange={() => setAssumeFunded(false)}
+          />{' '}
+          Yes — deposits and withdrawals are in the file
+        </label>
+        <label className="option">
+          <input
+            type="radio"
+            name="funding"
+            checked={assumeFunded}
+            onChange={() => setAssumeFunded(true)}
+          />{' '}
+          No — it only lists what I bought and sold
+        </label>
+        <span className="field-note">
+          {assumeFunded
+            ? 'Atlas will assume you funded each purchase yourself, so your percentages are based on the money actually invested. This is usually right for a broker export.'
+            : 'Atlas will track your cash from the file. If deposits are missing, your cash will go negative and every percentage will be measured against the wrong total.'}
+        </span>
+      </fieldset>
       <button onClick={submit} disabled={!csv}>Import</button>
       {error && <div className="error">{error}</div>}
       {result && (
