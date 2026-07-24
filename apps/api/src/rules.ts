@@ -132,7 +132,7 @@ export function registerRuleRoutes(app: FastifyInstance, pool: pg.Pool): void {
     if (!user) return;
     const parsed = createRuleSchema.safeParse(req.body);
     if (!parsed.success) {
-      return problem(reply, req, 400, 'validation', 'Invalid rule payload', parsed.error.issues[0]?.message);
+      return problem(reply, req, 400, 'validation', "Check the rule details", parsed.error.issues[0]?.message);
     }
     const d = parsed.data;
     if (d.type === 'no_buy_list') {

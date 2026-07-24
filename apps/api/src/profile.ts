@@ -251,7 +251,7 @@ export function registerProfileRoutes(app: FastifyInstance, pool: pg.Pool): void
     if (!user) return;
     const parsed = profileSchema.safeParse(req.body);
     if (!parsed.success) {
-      return problem(reply, req, 400, 'validation', 'Invalid profile payload', parsed.error.issues[0]?.message);
+      return problem(reply, req, 400, 'validation', "Check your answers", parsed.error.issues[0]?.message);
     }
     const d = parsed.data;
     if (d.monthly_contribution !== undefined && d.contribution_currency === undefined) {

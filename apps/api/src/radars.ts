@@ -80,7 +80,7 @@ export function registerRadarRoutes(app: FastifyInstance, pool: pg.Pool): void {
     if (!user) return;
     const parsed = createSchema.safeParse(req.body);
     if (!parsed.success) {
-      return problem(reply, req, 400, 'validation', 'Invalid radar payload', parsed.error.issues[0]?.message);
+      return problem(reply, req, 400, 'validation', "Check the radar details", parsed.error.issues[0]?.message);
     }
     const d = parsed.data;
     const m = d.condition.metric as { securityId?: string; ruleId?: string };

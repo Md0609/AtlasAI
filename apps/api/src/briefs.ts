@@ -137,7 +137,7 @@ export function registerBriefRoutes(app: FastifyInstance, pool: pg.Pool): void {
     if (!user) return;
     const parsed = decisionSchema.safeParse(req.body);
     if (!parsed.success) {
-      return problem(reply, req, 400, 'validation', 'Invalid decision payload', parsed.error.issues[0]?.message);
+      return problem(reply, req, 400, 'validation', "Check the decision details", parsed.error.issues[0]?.message);
     }
     const d = parsed.data;
     if (d.price !== undefined && d.currency === undefined) {

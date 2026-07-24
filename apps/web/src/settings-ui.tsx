@@ -8,6 +8,8 @@
  */
 import { useEffect, useState } from 'react';
 import { api, ApiError } from './api';
+import { describeError } from './use-resource';
+import { ErrorState, LoadingState } from './states';
 
 interface MemoryItem {
   id: string;
@@ -25,7 +27,17 @@ interface MemoryItem {
  */
 function WhatAtlasKnows() {
   const [items, setItems] = useState<MemoryItem[]>([]);
-  const load = () => api.get<{ data: MemoryItem[] }>('/v1/memory').then((r) => setItems(r.data)).catch(() => {});
+  const [state, setState] = useState<{ loading: boolean; error: string | null }>({ loading: true, error: null });
+  const load = () => {
+    setState({ loading: true, error: null });
+    return api
+      .get<{ data: MemoryItem[] }>('/v1/memory')
+      .then((r) => {
+        setItems(r.data);
+        setState({ loading: false, error: null });
+      })
+      .catch((e) => setState({ loading: false, error: describeError(e) }));
+  };
   useEffect(() => {
     load();
   }, []);
@@ -38,7 +50,9 @@ function WhatAtlasKnows() {
   return (
     <>
       <h3 style={{ marginTop: 28 }}>What Atlas knows about you</h3>
-      {items.length === 0 ? (
+      {state.loading && <LoadingState />}
+      {state.error && <ErrorState message={state.error} onRetry={load} />}
+      {!state.loading && !state.error && items.length === 0 ? (
         <p className="muted">
           Nothing remembered yet. As you talk to Atlas, the exchanges worth keeping appear here — and you can
           delete any of them.

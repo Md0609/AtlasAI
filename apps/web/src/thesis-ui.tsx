@@ -5,6 +5,7 @@
  */
 import { useEffect, useState } from 'react';
 import { api, ApiError, type PositionRow, type Portfolio, type Thesis } from './api';
+import { describeError } from './use-resource';
 import {
   ConditionBuilder,
   buildAst,
@@ -27,7 +28,7 @@ export function ThesisPanel({ portfolio }: { portfolio: Portfolio }) {
       api
         .get<{ data: Thesis[] }>(`/v1/theses?include_closed=${showClosed}`)
         .then((r) => setTheses(r.data)),
-    ]).catch(() => {});
+    ]).catch((e) => setError(describeError(e)));
   useEffect(() => {
     refresh();
   }, [portfolio.id, showClosed]);

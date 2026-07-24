@@ -1,5 +1,5 @@
 /**
- * CSV import + mapping UI (Design §B1 Phase 1 deliverable). Extracted from
+ * CSV import + mapping UI. Extracted from
  * App.tsx so onboarding (Phase 2) can reuse the exact same component.
  */
 import { useEffect, useMemo, useState } from 'react';
@@ -58,9 +58,21 @@ export function ImportCsv({ portfolio, onDone }: { portfolio: Portfolio; onDone:
 
   return (
     <div className="card">
-      <h3>Import transactions from CSV</h3>
-      <p className="muted">Header row required. Dates as YYYY-MM-DD. Buy/sell at Phase 1.</p>
-      <input type="file" accept=".csv,text/csv" onChange={(e) => onFile(e.target.files?.[0] ?? null)} />
+      <h3>Import from a file</h3>
+      <p className="muted">
+        Most brokers can export your transactions as a CSV. Include a header row, dates as
+        YYYY-MM-DD, and one row per buy or sell.
+      </p>
+      <label>
+        Choose a file
+        <input
+          type="file"
+          accept=".csv,text/csv"
+          onChange={(e) => onFile(e.target.files?.[0] ?? null)}
+          aria-label="Choose a CSV file to import"
+        />
+      </label>
+      <p className="field-note">…or paste the rows directly below.</p>
       <textarea
         rows={6}
         placeholder={'ticker,date,quantity,price,currency\nAAPL,2026-02-02,10,220.5,USD'}

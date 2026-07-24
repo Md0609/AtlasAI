@@ -119,7 +119,7 @@ export function registerAuthRoutes(app: FastifyInstance, pool: pg.Pool): void {
   }, async (req, reply) => {
     const parsed = registerSchema.safeParse(req.body);
     if (!parsed.success) {
-      return problem(reply, req, 400, 'validation', 'Invalid registration payload', parsed.error.issues[0]?.message);
+      return problem(reply, req, 400, 'validation', "Check the details below", parsed.error.issues[0]?.message);
     }
     const { email, password, jurisdiction, base_currency } = parsed.data;
 
@@ -166,7 +166,7 @@ export function registerAuthRoutes(app: FastifyInstance, pool: pg.Pool): void {
   }, async (req, reply) => {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) {
-      return problem(reply, req, 400, 'validation', 'Invalid login payload');
+      return problem(reply, req, 400, 'validation', "Enter your email and password");
     }
     const { rows } = await pool.query(
       'SELECT id, password_hash FROM users WHERE email = $1 AND deleted_at IS NULL',
