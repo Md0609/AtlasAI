@@ -27,6 +27,38 @@ import { RealityCheck } from './reality-ui';
 
 type Step = 'basics' | 'portfolio' | 'reality' | 'strategy' | 'scenarios' | 'rules' | 'summary';
 
+/** Ordered so the user always knows where they are and how much is left. */
+const STEP_ORDER: Step[] = ['basics', 'portfolio', 'reality', 'strategy', 'scenarios', 'rules', 'summary'];
+const STEP_LABEL: Record<Step, string> = {
+  basics: 'About you',
+  portfolio: 'Your holdings',
+  reality: 'Reality Check',
+  strategy: 'Your approach',
+  scenarios: 'How you react',
+  rules: 'Your rules',
+  summary: 'Done',
+};
+
+function Progress({ step, onBack }: { step: Step; onBack?: () => void }) {
+  const i = STEP_ORDER.indexOf(step);
+  const pct = ((i + 1) / STEP_ORDER.length) * 100;
+  return (
+    <div className="progress">
+      {onBack ? (
+        <button className="link" onClick={onBack} aria-label="Go back a step">← Back</button>
+      ) : (
+        <span />
+      )}
+      <div className="progress-track" role="progressbar" aria-valuemin={1} aria-valuemax={STEP_ORDER.length} aria-valuenow={i + 1} aria-label="Setup progress">
+        <div className="progress-fill" style={{ width: `${pct}%` }} />
+      </div>
+      <span className="progress-label">
+        Step {i + 1} of {STEP_ORDER.length} · {STEP_LABEL[step]}
+      </span>
+    </div>
+  );
+}
+
 const STRATEGY_CARDS: Array<{ key: Strategy; title: string; blurb: string }> = [
   {
     key: 'quality_growth',
@@ -60,7 +92,9 @@ export function Onboarding({ me, onComplete }: { me: Me; onComplete: () => void 
   // user action writes the profile).
   const [capitalBand, setCapitalBand] = useState<(typeof CAPITAL_BANDS)[number] | ''>('');
   const [experience, setExperience] = useState('');
-  const [horizon, setHorizon] = useState<number | ''>('');
+  // Answered, not blank. The field was empty while its placeholder read "10",
+  // so the CTA was disabled for a question the user believed they had answered.
+  const [horizon, setHorizon] = useState<number | ''>(10);
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [statedStrategy, setStatedStrategy] = useState<Strategy | null>(null);
   const [inference, setInference] = useState<StrategyInference | null>(null);
@@ -166,6 +200,15 @@ export function Onboarding({ me, onComplete }: { me: Me; onComplete: () => void 
         <span className="muted">Let's find out what you actually own.</span>
       </header>
 
+      <Progress
+        step={step}
+        onBack={
+          STEP_ORDER.indexOf(step) > 0 && step !== 'summary'
+            ? () => setStep(STEP_ORDER[STEP_ORDER.indexOf(step) - 1]!)
+            : undefined
+        }
+      />
+
       {step === 'basics' && (
         <div className="card">
           <h3>Three quick questions.</h3>
@@ -204,6 +247,9 @@ export function Onboarding({ me, onComplete }: { me: Me; onComplete: () => void 
           <button onClick={startPortfolio} disabled={!capitalBand || !experience || !horizon}>
             Now the important part: what do you own? →
           </button>
+          {(!capitalBand || !experience || !horizon) && (
+            <p className="field-note">Answer the three above and this opens.</p>
+          )}
           {error && <div className="error">{error}</div>}
         </div>
       )}
@@ -288,9 +334,10 @@ export function Onboarding({ me, onComplete }: { me: Me; onComplete: () => void 
 
       {step === 'scenarios' && (
         <div className="card">
-          <h3>Not a slider — three real situations.</h3>
+          <h3>Three real situations.</h3>
           <p className="muted">
-            These use your actual numbers. What you'd really do matters more than what you'd rate
+            {portfolio ? 'These use your actual portfolio value.' : 'These use an example figure based on the range you gave — you have not added holdings yet.'}{' '}
+            What you'd really do matters more than what you'd rate
             yourself.
           </p>
           {scenarios.map((s) => (

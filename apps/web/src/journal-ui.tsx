@@ -6,7 +6,11 @@
  */
 import { api, type JournalEntry } from './api';
 import { useResource } from './use-resource';
-import { ErrorState, LoadingState } from './states';
+import { EmptyState, ErrorState, LoadingState } from './states';
+
+/** Same format everywhere in the app, and never the machine's ISO string. */
+const day = (iso: string) =>
+  new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
 const KIND_LABEL: Record<string, string> = {
   decision: 'Decision',
@@ -31,10 +35,11 @@ export function JournalView() {
       {loading && <LoadingState />}
       {error && <ErrorState message={error} onRetry={reload} />}
       {!loading && !error && entries.length === 0 ? (
-        <p className="muted">
-          Your reasoning history lives here — decisions (including "no change"), the theses you write,
-          the rules you set — each with the reason you gave, unedited, forever.
-        </p>
+        <EmptyState title="Nothing recorded yet">
+          Your reasoning history lives here — decisions (including “no change”), the theses you
+          write, the rules you set — each with the reason you gave, unedited, forever. Entries
+          appear as you make those choices; there is nothing to set up.
+        </EmptyState>
       ) : (
         entries.map((e) => (
           <div key={e.id} className="thesis">
@@ -46,7 +51,7 @@ export function JournalView() {
               </strong>
               <span className="muted">
                 {e.source === 'copilot' && <span className="badge">from Copilot</span>}{' '}
-                {String(e.occurred_at).slice(0, 10)}
+                {day(e.occurred_at)}
               </span>
             </div>
             {e.detail && <blockquote>“{e.detail}”</blockquote>}

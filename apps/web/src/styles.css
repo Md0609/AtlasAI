@@ -96,6 +96,11 @@ label.option input { display: inline; width: auto; margin-right: 6px; }
 .brief.tone-calm { border-left-color: #6a8caf; }   /* never red, never urgent (§18.5) */
 .brief.tone-light { border-left-color: #c8a24b; }
 .brief-body { white-space: pre-line; }
+.eyebrow {
+  color: var(--muted); font-size: 0.78rem; letter-spacing: 0.04em;
+  text-transform: uppercase; margin-bottom: 2px;
+}
+.brief h4 { margin: 0 0 6px; }
 .brief-actions button { margin-top: 4px; }
 .thesis { border-bottom: 1px solid var(--line); padding: 10px 0; }
 .thesis blockquote { margin: 8px 0; padding-left: 10px; border-left: 2px solid var(--accent); font-style: italic; }
@@ -185,3 +190,133 @@ button.secondary {
 }
 .hint { color: var(--muted); font-size: 0.85em; margin-top: 4px; }
 .field-note { color: var(--muted); font-size: 0.85em; display: block; margin-top: 2px; }
+
+/* ------------------------------------------------------------------ */
+/* Phase B — glossary, IA, responsive, accessibility                    */
+/* ------------------------------------------------------------------ */
+
+/* Inline explainers (P8): the precise term stays, and becomes explainable. */
+.term-wrap { position: relative; display: inline; }
+button.term {
+  background: none; border: none; padding: 0; margin: 0; font: inherit;
+  color: inherit; cursor: help; text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.term-pop {
+  position: absolute; left: 0; top: 1.6em; z-index: 30;
+  width: max-content; max-width: min(320px, calc(100vw - 32px));
+  background: var(--ink); color: #fff; font-size: 0.85rem; line-height: 1.45;
+  padding: 10px 12px; border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.22);
+  /* Terms sit mid-sentence, so a popover anchored to one near the right edge
+     runs off the page. Term measures itself and passes the correction here. */
+  transform: translateX(var(--term-shift, 0px));
+}
+
+/* Account menu replaces "settings" as a primary destination. */
+.account { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.account button.link { padding: 6px 4px; }
+
+/* Section rhythm inside a surface — progressive disclosure by default. */
+.section { border-top: 1px solid var(--line); margin-top: 24px; padding-top: 20px; }
+.section:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
+.section-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+}
+.section-head h3, .section-head h4 { margin: 0; }
+.summary-line { color: var(--muted); margin: 6px 0 0; }
+
+/* One primary action per surface. */
+.primary-bar { display: flex; gap: 10px; align-items: center; margin: 12px 0 4px; flex-wrap: wrap; }
+
+/* Onboarding progress. */
+.progress { display: flex; align-items: center; gap: 10px; margin: 4px 0 16px; }
+.progress-track { flex: 1; height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--accent); transition: width 240ms ease; }
+.progress-label { color: var(--muted); font-size: 0.85rem; white-space: nowrap; }
+
+/* ---- Accessibility: contrast + hit targets (WCAG 2.2 AA) ------------ */
+:root { --muted: #595959; }           /* was #6b6b6b — now ≥4.5:1 on --bg */
+button, .tab, a { min-height: 44px; }
+button.link, button.term { min-height: 0; }
+.card input, .card select, .card textarea { min-height: 44px; }
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* A disabled control had no disabled *appearance* anywhere in the app: the
+   primary CTA looked identical whether it worked or not, so clicking it and
+   getting nothing was the first thing many users experienced. */
+button:disabled, button:disabled:hover {
+  opacity: 0.45; cursor: not-allowed; filter: saturate(0.4);
+}
+
+/* Keyboard users land on the nav on every screen; this lets them past it. */
+.skip-link {
+  position: absolute; left: -9999px; top: 8px; z-index: 100;
+  background: var(--ink); color: #fff;
+  padding: 10px 16px; border-radius: 8px; text-decoration: none;
+}
+.skip-link:focus { left: 8px; }
+
+/* ---- Responsive: the app was desktop-only (no media queries at all) -- */
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.tabs button.tab { margin-right: 0; }
+
+@media (max-width: 720px) {
+  .shell { padding: 16px 14px 96px; }
+  h1 { font-size: 1.5rem; }
+  .card { padding: 16px; border-radius: 12px; }
+  .inline { flex-direction: column; align-items: stretch; }
+  .inline input, .inline select { width: 100%; }
+  .mapping { grid-template-columns: 1fr 1fr; }
+  .strategy-grid { grid-template-columns: 1fr; }
+
+  /* Tables become stacked rows — a 3-column table is unreadable at 360px. */
+  table.responsive thead { display: none; }
+  table.responsive tr {
+    display: block; border-bottom: 1px solid var(--line); padding: 10px 0;
+  }
+  table.responsive td {
+    display: flex; align-items: baseline; gap: 0;
+    border: 0; padding: 3px 0; text-align: right;
+  }
+  /* margin-right:auto rather than space-between: a cell whose value is several
+     nodes (a name plus its currency) must still read as ONE value opposite the
+     label, not as three evenly-spread columns. */
+  table.responsive td::before {
+    content: attr(data-label); color: var(--muted); font-size: 0.85rem;
+    flex: 0 0 auto; margin-right: auto; padding-right: 12px; text-align: left;
+  }
+
+  /* Primary navigation docks to the bottom, where a thumb is. */
+  nav.tabs.primary {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+    margin: 0; padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+    background: var(--card); border-top: 1px solid var(--line);
+    display: flex; justify-content: space-around; gap: 2px;
+  }
+  nav.tabs.primary button.tab {
+    border: 0; background: none; flex: 1; font-size: 0.8rem; padding: 6px 2px;
+  }
+  nav.tabs.primary button.tab.active { background: none; color: var(--accent); font-weight: 600; }
+  /* A keyboard shortcut is noise on a touch device. */
+  nav.tabs.primary kbd { display: none; }
+  .cmdk-hint { border-style: solid; }
+
+  /* The Copilot becomes a sheet, not a floating dialog. */
+  .cmdk-backdrop { padding-top: 0; align-items: flex-end; }
+  .cmdk { width: 100vw; max-height: 88vh; border-radius: 14px 14px 0 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* An explicit either/or, not a pre-checked technical toggle. */
+.option-group { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin: 14px 0; }
+.option-group legend { padding: 0 6px; color: var(--ink); font-weight: 600; }
+.option-group .option { display: block; margin: 6px 0; }
+.option-group input { width: auto; display: inline; min-height: 0; margin-right: 4px; }

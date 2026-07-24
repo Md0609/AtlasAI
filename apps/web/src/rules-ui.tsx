@@ -88,6 +88,7 @@ export function RulesPanel() {
             {removing === r.id ? (
               <div className="inline">
                 <input
+                  aria-label="Why are you removing this rule?"
                   placeholder="Why are you removing this rule? (required)"
                   value={removeReason}
                   onChange={(e) => setRemoveReason(e.target.value)}
@@ -138,6 +139,7 @@ function SuggestionRow({
       {open ? (
         <div className="inline">
           <input
+            aria-label="Why this rule?"
             placeholder="Why this rule? Your reason is quoted back at breach time."
             value={reason}
             onChange={(e) => setReason(e.target.value)}
@@ -154,9 +156,14 @@ function SuggestionRow({
   );
 }
 
-function labelFor(r: RuleRow): string {
-  const p = r.params as { limit?: string; sector?: string; count?: number; months?: number; label?: string };
-  switch (r.type) {
+/**
+ * A rule said the way its owner wrote it. Exported because Today has to name
+ * the same rule in its open questions, and the two screens disagreeing about
+ * what a rule is called would be its own small betrayal of trust.
+ */
+export function ruleLabel(type: string, params: Record<string, unknown> | undefined): string {
+  const p = (params ?? {}) as { limit?: string; sector?: string; count?: number; months?: number; label?: string };
+  switch (type) {
     case 'max_single_name':
       return `Max ${(Number(p.limit) * 100).toFixed(0)}% in a single name`;
     case 'max_sector':
@@ -172,8 +179,12 @@ function labelFor(r: RuleRow): string {
     case 'min_holding_period':
       return `Hold at least ${p.months} months`;
     default:
-      return r.type;
+      return type;
   }
+}
+
+function labelFor(r: RuleRow): string {
+  return ruleLabel(r.type, r.params as Record<string, unknown>);
 }
 
 export { pctOrRaw };

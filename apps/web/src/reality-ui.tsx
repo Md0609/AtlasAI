@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { api, type Portfolio, type RealityCheckResponse } from './api';
 import { useResource } from './use-resource';
 import { EmptyState, ErrorState, LoadingState } from './states';
+import { Glossed, Term } from './register';
 
 const pctNum = (w: string) => `${(Number(w) * 100).toFixed(1)}%`;
 
@@ -34,15 +35,15 @@ export function RealityCheck({
     return (
       <div className="card">
         <EmptyState
-          title="Atlas needs your holdings first"
+          title="Not enough to work with yet"
           action={
             onAddHoldings && (
               <button onClick={onAddHoldings}>Add your holdings</button>
             )
           }
         >
-          The Reality Check compares what you think you own against what you actually own. It has
-          nothing to compare yet.
+          The Reality Check compares what you think you own against what you actually own. It needs
+          holdings with a current value before it can tell you anything true.
         </EmptyState>
       </div>
     );
@@ -55,9 +56,10 @@ export function RealityCheck({
       <div className="card">
         <h3>Your portfolio is what you think it is.</h3>
         <p className="muted">
-          Atlas looked through your funds to your real single-name exposure, measured how
-          concentrated you actually are, checked your currency mix and looked for holdings that move
-          together — and found nothing that should surprise you. That is a result, not an empty page.
+          Atlas checked your <Term k="look-through">look-through</Term> exposure, your{' '}
+          <Term k="concentration">concentration</Term>, your currency mix and any{' '}
+          <Term k="correlation cluster">correlation clusters</Term> — and found nothing that should
+          surprise you. That is a result, not an empty page.
         </p>
         {resp.warnings.map((w, i) => <div key={i} className="gaps">⚠ {w}</div>)}
       </div>
@@ -71,7 +73,7 @@ export function RealityCheck({
         {d.top.map((s) => (
           <div key={s.kind} className="surprise">
             <h4>{s.headline}</h4>
-            <p>{s.body}</p>
+            <p><Glossed text={s.body} /></p>
           </div>
         ))}
         {d.others.length > 0 && (
@@ -90,15 +92,15 @@ export function RealityCheck({
         {resp.gaps.map((g, i) => <div key={i} className="gaps">⚠ {g.reason}</div>)}
         {d.correlation.clusters.length > 0 && (
           <>
-            <h4>Correlation clusters</h4>
-            <table>
+            <h4><Term k="correlation cluster">Correlation clusters</Term></h4>
+            <table className="responsive">
               <thead><tr><th>Members</th><th>Weight</th><th>Min pair corr.</th></tr></thead>
               <tbody>
                 {d.correlation.clusters.map((c, i) => (
                   <tr key={i}>
-                    <td>{c.members.map((m) => m.label).join(', ')}</td>
-                    <td>{pctNum(c.weight)}</td>
-                    <td>{Number(c.minPairCorrelation).toFixed(2)}</td>
+                    <td data-label="Members">{c.members.map((m) => m.label).join(', ')}</td>
+                    <td data-label="Weight">{pctNum(c.weight)}</td>
+                    <td data-label="Min pair corr.">{Number(c.minPairCorrelation).toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>

@@ -8,6 +8,39 @@ import { useState } from 'react';
 import { api, ApiError, type Brief, type Suppression, type Today } from './api';
 import { useResource } from './use-resource';
 import { EmptyState, ErrorState, LoadingState } from './states';
+import { WeeklyReviewView } from './weekly-review-ui';
+import { Glossed, Term } from './register';
+import { ruleLabel } from './rules-ui';
+
+/**
+ * The §18.4 brief classes, said out loud. "C1" is an internal taxonomy code; a
+ * reader has no way to decode it, and printing it next to a headline makes the
+ * product sound like a log file. Each label answers the only question the code
+ * was ever standing in for: why am I being told this?
+ */
+const BRIEF_KIND: Record<Brief['class'], string> = {
+  C0: 'A condition you set was met',
+  C1: 'A rule you set was breached',
+  C2: 'Something you put on your radar',
+};
+
+/**
+ * Suppression reasons, translated at render time.
+ *
+ * The stored reason is an audit record and cites its own spec section — right
+ * for the log, wrong for the person reading "what Atlas didn't send". These
+ * are rewritten here rather than at write time so the audit trail keeps its
+ * precision and the reader still gets a sentence.
+ */
+function suppressionReason(raw: string): string {
+  if (raw.startsWith('duplicate:')) return 'you had already been told about this the same day';
+  if (raw.startsWith('daily cap:')) return 'you had already had two interruptions that day';
+  const weekly = /allows (\d+) /.exec(raw);
+  if (raw.startsWith('weekly budget:') && weekly) {
+    return `you had already used all ${weekly[1]} of that week's interruptions`;
+  }
+  return raw;
+}
 
 interface TodayBundle {
   briefs: Brief[];
@@ -81,22 +114,51 @@ export function TodayView({ onAddHoldings }: { onAddHoldings?: () => void }) {
 
       {error && <div className="error">{error}</div>}
 
+      <ThisWeek />
+
       {suppressions.length > 0 && (
         <div className="card">
           <button className="link" onClick={() => setShowSuppressed(!showSuppressed)}>
             {showSuppressed ? 'Hide' : `What Atlas didn't send (${suppressions.length}) →`}
           </button>
           {showSuppressed && (
-            <ul className="plain">
-              {suppressions.map((s) => (
-                <li key={s.id}>
-                  · {s.headline ?? s.class} <span className="muted">— {s.reason}</span>
-                </li>
-              ))}
-            </ul>
+            <>
+              <p className="summary-line">
+                These were held back on purpose. Nothing was deleted — they are still here.
+              </p>
+              <ul className="plain">
+                {suppressions.map((s) => (
+                  <li key={s.id}>
+                    · {s.headline ?? BRIEF_KIND[s.class as Brief['class']] ?? 'A brief'}{' '}
+                    <span className="muted">— held back because {suppressionReason(s.reason)}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** The Weekly Review, folded into Today rather than owning a nav slot. */
+function ThisWeek() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="card">
+      <div className="section-head">
+        <h3>Your week</h3>
+        <button className="link" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+          {open ? 'Hide' : 'Read the review →'}
+        </button>
+      </div>
+      {!open && (
+        <p className="summary-line">
+          What changed, what Atlas reviewed and chose not to send, how your rules held.
+        </p>
+      )}
+      {open && <WeeklyReviewView />}
     </div>
   );
 }
@@ -109,10 +171,22 @@ export function TodayView({ onAddHoldings }: { onAddHoldings?: () => void }) {
 function QuietDay({ today }: { today: Today }) {
   const [showReceipt, setShowReceipt] = useState(false);
   const { reviewed, receipt, quiet_days, open_questions, weekly_review } = today;
+  const plural = (n: number) => (n === 1 ? '' : 's');
+  // JSX, not a template string — the glossary term has to be a real element.
   const reviewedLine =
-    reviewed.updates > 0
-      ? `Atlas reviewed ${reviewed.updates} update${reviewed.updates === 1 ? '' : 's'} across your ${reviewed.holdings} holding${reviewed.holdings === 1 ? '' : 's'}. None of them changed anything material to you.`
-      : `Atlas is watching your ${reviewed.holdings} holding${reviewed.holdings === 1 ? '' : 's'}, your rules and your thesis conditions. Nothing has changed that should change what you do.`;
+    reviewed.updates > 0 ? (
+      <>
+        Atlas reviewed {reviewed.updates} update{plural(reviewed.updates)} across your{' '}
+        {reviewed.holdings} holding{plural(reviewed.holdings)}. None of them changed anything
+        material to you.
+      </>
+    ) : (
+      <>
+        Atlas is watching your {reviewed.holdings} holding{plural(reviewed.holdings)}, your rules
+        and your <Term k="thesis">thesis</Term> conditions. Nothing has changed that should change
+        what you do.
+      </>
+    );
 
   return (
     <div className="card quiet">
@@ -156,7 +230,10 @@ function QuietDay({ today }: { today: Today }) {
                     <span>a falsification condition you set is met — “{q.text}”</span>
                   </>
                 ) : (
-                  <span className="muted">Rule outside its limit: {q.text}</span>
+                  <span>
+                    <strong>{ruleLabel(q.text, q.params)}</strong> — this rule is currently outside
+                    its limit.
+                  </span>
                 )}
               </li>
             ))}
@@ -212,15 +289,17 @@ function BriefCard({
 
   return (
     <div className={`brief tone-${brief.tone} ${hero ? 'hero' : ''} ${brief.read_at ? 'read' : ''}`}>
-      <div className="rule-head">
-        <h4>{brief.headline}</h4>
-        <span className="muted">{brief.class}</span>
-      </div>
-      <p className="brief-body">{brief.body}</p>
+      {/* The reason you are being told sits above the headline, small — it is
+          context for the headline, not a second one competing with it. */}
+      <div className="eyebrow">{BRIEF_KIND[brief.class]}</div>
+      <h4>{brief.headline}</h4>
+      <p className="brief-body"><Glossed text={brief.body} /></p>
       {isThesisBrief && !brief.read_at ? (
         deciding ? (
           <div>
             <input
+              autoFocus
+              aria-label="Your reason for this decision"
               placeholder={
                 deciding === 'no_change'
                   ? 'Why does nothing change? Your future self will read this.'

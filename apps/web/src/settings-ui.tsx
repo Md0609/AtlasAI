@@ -121,7 +121,12 @@ export function SettingsPanel() {
             questions, no retention offers. Type <strong>DELETE</strong> to confirm.
           </p>
           <div className="inline">
-            <input value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="DELETE" />
+            <input
+              aria-label="Type DELETE to confirm erasing your account"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              placeholder="DELETE"
+            />
             <button onClick={requestDeletion} disabled={confirm !== 'DELETE'}>
               Erase my account
             </button>
