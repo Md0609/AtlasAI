@@ -77,28 +77,70 @@ export async function enqueue(
 }
 
 /**
- * Claim up to `limit` runnable jobs. Per-entity ordering (§24.4): a job is
- * only claimable when no earlier job with the same partition_key is still
- * pending or processing. SKIP LOCKED keeps concurrent workers from fighting.
+ * How long a claim is good for. Generous relative to the slowest job (a
+ * narrated brief behind an LLM call, itself now bounded by a request timeout),
+ * because the cost of a lease that is too SHORT is a job running twice, while
+ * the cost of one too long is a user waiting. At-least-once with idempotent
+ * consumers is the contract (D-010) and user-visible effects are deduped at
+ * the effect boundary, so the first is safe and the second is not.
+ */
+const LEASE_SECONDS = 300;
+
+/** A claim is live if it has not expired. NULL predates the lease column. */
+const LIVE_CLAIM = `(e.status = 'pending' OR (e.status = 'processing' AND e.locked_until > now()))`;
+
+/**
+ * Claim up to `limit` runnable jobs.
+ *
+ * Per-entity ordering (§24.4): a job is only claimable when no earlier job
+ * with the same partition_key is still live. SKIP LOCKED keeps concurrent
+ * workers from fighting.
+ *
+ * A job whose lease has expired is treated as runnable again — its worker is
+ * gone — and stops blocking its partition. Without this, one crashed worker
+ * silenced a user permanently (see migration 020).
  */
 export async function claimJobs(client: pg.PoolClient, limit: number): Promise<Job[]> {
+  // A job whose worker keeps dying must eventually stop, or a poison payload
+  // that kills the process becomes an infinite loop. Retire the exhausted ones
+  // before claiming, so they neither run again nor block their partition.
+  await client.query(
+    `UPDATE job_queue
+        SET status = 'dead', updated_at = now(),
+            last_error = coalesce(last_error, 'lease expired with no attempts left')
+      WHERE status = 'processing'
+        AND (locked_until IS NULL OR locked_until <= now())
+        AND attempts >= max_attempts`,
+  );
+
   const { rows } = await client.query(
-    `UPDATE job_queue SET status = 'processing', updated_at = now()
+    `UPDATE job_queue
+        SET status = 'processing',
+            updated_at = now(),
+            locked_until = now() + ($2 || ' seconds')::interval,
+            -- A reclaimed job is a retry: count it, so repeated worker deaths
+            -- reach the dead-letter queue instead of cycling forever.
+            attempts = attempts + CASE WHEN status = 'processing' THEN 1 ELSE 0 END
       WHERE id IN (
         SELECT j.id FROM job_queue j
-         WHERE j.status = 'pending' AND j.run_after <= now()
+         WHERE (
+                 (j.status = 'pending' AND j.run_after <= now())
+                 OR (j.status = 'processing'
+                     AND (j.locked_until IS NULL OR j.locked_until <= now())
+                     AND j.attempts < j.max_attempts)
+               )
            AND NOT EXISTS (
              SELECT 1 FROM job_queue e
               WHERE e.partition_key = j.partition_key
                 AND e.id < j.id
-                AND e.status IN ('pending','processing')
+                AND ${LIVE_CLAIM}
            )
          ORDER BY j.id
          LIMIT $1
          FOR UPDATE SKIP LOCKED
       )
       RETURNING id::text, topic, partition_key, payload, attempts, max_attempts`,
-    [limit],
+    [limit, String(LEASE_SECONDS)],
   );
   return rows.map((r) => ({
     id: r.id,
@@ -111,7 +153,10 @@ export async function claimJobs(client: pg.PoolClient, limit: number): Promise<J
 }
 
 export async function completeJob(db: Db, jobId: string): Promise<void> {
-  await db.query(`UPDATE job_queue SET status = 'done', updated_at = now() WHERE id = $1`, [jobId]);
+  await db.query(
+    `UPDATE job_queue SET status = 'done', locked_until = NULL, updated_at = now() WHERE id = $1`,
+    [jobId],
+  );
 }
 
 /** Exponential backoff; dead-letter after max_attempts (§26.2 DLQ). */
@@ -119,7 +164,8 @@ export async function failJob(db: Db, job: Job, error: string): Promise<void> {
   const attempts = job.attempts + 1;
   if (attempts >= job.maxAttempts) {
     await db.query(
-      `UPDATE job_queue SET status = 'dead', attempts = $2, last_error = $3, updated_at = now()
+      `UPDATE job_queue SET status = 'dead', attempts = $2, last_error = $3,
+              locked_until = NULL, updated_at = now()
         WHERE id = $1`,
       [job.id, attempts, error.slice(0, 2000)],
     );
@@ -128,7 +174,7 @@ export async function failJob(db: Db, job: Job, error: string): Promise<void> {
   const backoffSeconds = 2 ** attempts;
   await db.query(
     `UPDATE job_queue
-        SET status = 'pending', attempts = $2, last_error = $3,
+        SET status = 'pending', attempts = $2, last_error = $3, locked_until = NULL,
             run_after = now() + ($4 || ' seconds')::interval, updated_at = now()
       WHERE id = $1`,
     [job.id, attempts, error.slice(0, 2000), String(backoffSeconds)],
