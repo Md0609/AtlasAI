@@ -102,6 +102,8 @@ export function Onboarding({ me, onComplete }: { me: Me; onComplete: () => void 
   const [riskStated, setRiskStated] = useState(3);
   const [savedProfile, setSavedProfile] = useState<Profile | null>(null);
   const [scenarios, setScenarios] = useState<RiskScenario[]>([]);
+  const [scenarioIdx, setScenarioIdx] = useState(0);
+  const [scenarioBasis, setScenarioBasis] = useState<'portfolio' | 'capital_band'>('capital_band');
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [suggestions, setSuggestions] = useState<RuleSuggestion[]>([]);
   const [adoptedRules, setAdoptedRules] = useState<Record<string, string>>({}); // type → reason
@@ -142,9 +144,22 @@ export function Onboarding({ me, onComplete }: { me: Me; onComplete: () => void 
   const toScenarios = async () => {
     setError(null);
     try {
-      const qs = portfolio ? `portfolio_id=${portfolio.id}` : `capital_band=${encodeURIComponent(capitalBand)}`;
-      const r = await api.get<{ data: RiskScenario[] }>(`/v1/profile/scenarios?${qs}`);
+      // Always send the band, even with a portfolio: an empty portfolio falls
+      // back to the band midpoint server-side, and sending only portfolio_id
+      // meant that fallback silently used the DEFAULT band rather than the one
+      // the user just picked — calibrating "your" scenario to someone else's
+      // money.
+      const qs = [
+        portfolio ? `portfolio_id=${portfolio.id}` : '',
+        capitalBand ? `capital_band=${encodeURIComponent(capitalBand)}` : '',
+      ]
+        .filter(Boolean)
+        .join('&');
+      const r = await api.get<{ data: RiskScenario[]; basis: 'portfolio' | 'capital_band' }>(
+        `/v1/profile/scenarios?${qs}`,
+      );
       setScenarios(r.data);
+      setScenarioBasis(r.basis ?? 'capital_band');
       setStep('scenarios');
     } catch (e) {
       fail(e);
@@ -332,43 +347,82 @@ export function Onboarding({ me, onComplete }: { me: Me; onComplete: () => void 
         </div>
       )}
 
+      {/* One situation at a time. These answers are a behavioural measurement,
+          not a form to clear: putting all three plus a self-rating on one
+          screen invites pattern-matching down the column instead of actually
+          picturing each one. */}
       {step === 'scenarios' && (
         <div className="card">
-          <h3>Three real situations.</h3>
-          <p className="muted">
-            {portfolio ? 'These use your actual portfolio value.' : 'These use an example figure based on the range you gave — you have not added holdings yet.'}{' '}
-            What you'd really do matters more than what you'd rate
-            yourself.
-          </p>
-          {scenarios.map((s) => (
-            <div key={s.scenarioId} className="scenario">
-              <p><strong>{s.prompt}</strong></p>
-              {s.options.map((o) => (
-                <label key={o.key} className="option">
-                  <input
-                    type="radio"
-                    name={s.scenarioId}
-                    checked={answers[s.scenarioId] === o.key}
-                    onChange={() => setAnswers({ ...answers, [s.scenarioId]: o.key })}
-                  />{' '}
-                  {o.label}
-                </label>
-              ))}
-            </div>
-          ))}
-          <label>
-            And how would you rate your own risk tolerance? (1 cautious … 5 aggressive)
-            <input
-              type="number"
-              min={1}
-              max={5}
-              value={riskStated}
-              onChange={(e) => setRiskStated(Math.min(5, Math.max(1, Number(e.target.value) || 3)))}
-            />
-          </label>
-          <button onClick={toRules} disabled={scenarios.some((s) => !answers[s.scenarioId])}>
-            Continue →
-          </button>
+          {scenarioIdx < scenarios.length ? (
+            (() => {
+              const s = scenarios[scenarioIdx]!;
+              const answered = Boolean(answers[s.scenarioId]);
+              return (
+                <>
+                  <div className="muted small">
+                    Situation {scenarioIdx + 1} of {scenarios.length}
+                  </div>
+                  <h3>{s.prompt}</h3>
+                  <p className="muted">
+                    {scenarioBasis === 'portfolio'
+                      ? 'This uses your actual portfolio value.'
+                      : 'This uses an example figure based on the range you gave — you have not added holdings yet.'}{' '}
+                    What you'd really do matters more than what you'd rate yourself.
+                  </p>
+                  <div className="scenario">
+                    {s.options.map((o) => (
+                      <label key={o.key} className="option">
+                        <input
+                          type="radio"
+                          name={s.scenarioId}
+                          checked={answers[s.scenarioId] === o.key}
+                          onChange={() => setAnswers({ ...answers, [s.scenarioId]: o.key })}
+                        />{' '}
+                        {o.label}
+                      </label>
+                    ))}
+                  </div>
+                  <div className="inline">
+                    <button disabled={!answered} onClick={() => setScenarioIdx((i) => i + 1)}>
+                      {scenarioIdx + 1 === scenarios.length ? 'Last question →' : 'Next →'}
+                    </button>
+                    {scenarioIdx > 0 && (
+                      <button className="link" onClick={() => setScenarioIdx((i) => i - 1)}>
+                        Back
+                      </button>
+                    )}
+                  </div>
+                  {!answered && <p className="field-note">Pick the one closest to the truth.</p>}
+                </>
+              );
+            })()
+          ) : (
+            <>
+              <h3>And how would you rate your own risk tolerance?</h3>
+              <p className="muted">
+                1 cautious … 5 aggressive. Atlas compares this with what you just chose — the gap
+                between the two is usually the interesting part.
+              </p>
+              <label>
+                Your own rating
+                <input
+                  type="number"
+                  min={1}
+                  max={5}
+                  value={riskStated}
+                  onChange={(e) => setRiskStated(Math.min(5, Math.max(1, Number(e.target.value) || 3)))}
+                />
+              </label>
+              <div className="inline">
+                <button onClick={toRules} disabled={scenarios.some((s) => !answers[s.scenarioId])}>
+                  Continue →
+                </button>
+                <button className="link" onClick={() => setScenarioIdx(scenarios.length - 1)}>
+                  Back
+                </button>
+              </div>
+            </>
+          )}
           {error && <div className="error">{error}</div>}
         </div>
       )}

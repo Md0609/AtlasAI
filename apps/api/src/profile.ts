@@ -203,12 +203,19 @@ export function registerProfileRoutes(app: FastifyInstance, pool: pg.Pool): void
       const named = signals.lookThrough.value.filter((r) => r.securityId !== null);
       if (named.length > 0) largest = { label: named[0]!.label, weight: named[0]!.weight };
     }
+    // Which basis was actually used. The caller cannot infer this — passing a
+    // portfolio_id does not mean the portfolio had any value — and without it
+    // the UI has to guess, which is how it ends up telling someone who skipped
+    // the import that these are "your actual portfolio value" (US-AI-02: never
+    // present a derived figure as an observed one).
+    let basis: 'portfolio' | 'capital_band' = q.portfolio_id ? 'portfolio' : 'capital_band';
     if (dec(total).lte(0)) {
       const band = (q.capital_band ?? '25k-100k') as keyof typeof BAND_MIDPOINT;
       total = BAND_MIDPOINT[band] ?? BAND_MIDPOINT['25k-100k'];
       largest = null;
+      basis = 'capital_band';
     }
-    return reply.send({ data: buildScenarios(total, currency, largest) });
+    return reply.send({ data: buildScenarios(total, currency, largest), basis });
   });
 
   // Deterministic strategy inference (F-04). A proposal — persists nothing.
