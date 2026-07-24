@@ -62,13 +62,14 @@ beforeAll(async () => {
   cookie = String(reg.headers['set-cookie']).split(';')[0]!;
   userId = reg.json().id;
 
-  // No profile ⇒ 'unknown' persona ⇒ weekly budget 5. Fill this week so the
-  // next non-C0 brief is over budget (dates in UTC, matching the dispatcher).
+  // No profile ⇒ 'unknown' persona ⇒ weekly budget 3 (§18.6 base). Fill this
+  // week so the next non-C0 brief is over budget (dates in UTC, matching the
+  // dispatcher).
   const dayUtc = new Date().toISOString().slice(0, 10);
   const prevDayUtc = new Date(Date.parse(`${dayUtc}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
   await pool.query(`ALTER TABLE notification_budget_ledger DISABLE TRIGGER notification_budget_trg`);
   try {
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 3; i++) {
       const bid = await mkBrief();
       await pool.query(
         `INSERT INTO notification_budget_ledger (user_id, brief_id, class, day_bucket, week_bucket)
@@ -88,10 +89,10 @@ afterAll(async () => {
 
 describe('suppression transparency + retrain (US-NOT-02)', () => {
   it('suppresses over budget, then "tell me next time" lets the next one through', async () => {
-    // 6th interruption this week ⇒ suppressed by the weekly budget (5).
-    const sixth = await mkBrief(await mkSecurity('SixCo'));
-    await dispatch(sixth);
-    expect(await deliveredCount(sixth)).toBe(0);
+    // 4th interruption this week ⇒ suppressed by the weekly budget (3).
+    const fourth = await mkBrief(await mkSecurity('FourCo'));
+    await dispatch(fourth);
+    expect(await deliveredCount(fourth)).toBe(0);
 
     // The suppression is a first-class, visible resource with a reason.
     const list = await inject({ method: 'GET', url: '/v1/suppressions' });
@@ -107,10 +108,10 @@ describe('suppression transparency + retrain (US-NOT-02)', () => {
     const fbCount = await pool.query(`SELECT count(*)::int n FROM notification_feedback WHERE user_id=$1`, [userId]);
     expect(fbCount.rows[0].n).toBe(1);
 
-    // Now the budget is 6, only 5 delivered this week ⇒ the next one gets through.
-    const seventh = await mkBrief(await mkSecurity('SevenCo'));
-    await dispatch(seventh);
-    expect(await deliveredCount(seventh)).toBe(2); // in_app + email
+    // Now the budget is 4, only 3 delivered this week ⇒ the next one gets through.
+    const fifth = await mkBrief(await mkSecurity('FifthCo'));
+    await dispatch(fifth);
+    expect(await deliveredCount(fifth)).toBe(2); // in_app + email
   });
 
   it('404s feedback on a suppression the user does not own', async () => {
