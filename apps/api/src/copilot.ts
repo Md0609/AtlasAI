@@ -15,6 +15,7 @@ import {
   answerCopilot,
   buildCopilotContext,
   CopilotContextError,
+  rememberExchange,
   type CopilotContext,
   type CopilotContextRef,
 } from '@atlas/agents';
@@ -81,6 +82,27 @@ async function insertMessage(
   );
   await db.query(`UPDATE copilot_threads SET last_message_at = now() WHERE id = $1`, [threadId]);
   return rows[0];
+}
+
+/**
+ * Persist a material exchange as episodic memory (FR-10.1) so future turns and
+ * other surfaces can retrieve it. The subject is the thread's bound security
+ * when it has one.
+ */
+async function rememberTurn(
+  pool: pg.Pool,
+  userId: string,
+  thread: ThreadRow,
+  question: string,
+  answer: string,
+): Promise<void> {
+  await rememberExchange(pool, {
+    userId,
+    securityId: thread.context_type === 'security' ? thread.context_ref : null,
+    content: `Q: ${question}\nA: ${answer}`,
+    source: 'copilot',
+    sourceRef: thread.id,
+  });
 }
 
 export function registerCopilotRoutes(app: FastifyInstance, pool: pg.Pool): void {
@@ -191,6 +213,7 @@ export function registerCopilotRoutes(app: FastifyInstance, pool: pg.Pool): void
       degraded: answer.degraded,
       guardApproved: answer.guardApproved,
     });
+    if (answer.guardApproved) await rememberTurn(pool, user.id, thread, parsed.data.message, answer.text);
 
     return reply.send({
       data: {
@@ -235,6 +258,7 @@ export function registerCopilotRoutes(app: FastifyInstance, pool: pg.Pool): void
       degraded: answer.degraded,
       guardApproved: answer.guardApproved,
     });
+    if (answer.guardApproved) await rememberTurn(pool, user.id, thread, parsed.data.message, answer.text);
 
     reply.hijack();
     const raw = reply.raw;

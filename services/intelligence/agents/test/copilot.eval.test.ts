@@ -23,7 +23,9 @@ let userId: string;
 
 const CONTEXT: CopilotContext = {
   type: 'security',
-  ref: 'sec-1',
+  // A real securities.id shape: the context ref is uuid-validated at the API and
+  // is used to scope memory retrieval (§30.3).
+  ref: '22222222-2222-2222-2222-222222222222',
   title: 'Apple',
   preamble: 'You are looking at Apple (Information Technology).\nTrailing P/E: 28.4×.',
   allowedNumerals: ['28.4'],
