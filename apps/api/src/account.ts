@@ -12,10 +12,12 @@
  * The export reads only; the destructive half is the worker (account-worker.ts).
  */
 import { randomUUID } from 'node:crypto';
+import argon2 from 'argon2';
+import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import type pg from 'pg';
 import { enqueue } from '@atlas/bus';
-import { requireUser } from './auth.js';
+import { audit, requireUser } from './auth.js';
 import { problem } from './http.js';
 
 /** Grace window before erasure runs (≤30-day SLA). Read per call so a
@@ -153,6 +155,42 @@ export function registerAccountRoutes(app: FastifyInstance, pool: pg.Pool): void
   app.delete('/v1/account', async (req, reply) => {
     const user = requireUser(req, reply);
     if (!user) return;
+
+    /**
+     * Re-authenticate before an irreversible destruction (P1-2).
+     *
+     * A session alone used to be enough: a stolen cookie, or a borrowed laptop,
+     * destroyed the account and every thesis and decision in it. The typed
+     * "DELETE" confirmation is client-side only and proves intent, not
+     * identity.
+     *
+     * This is not the friction §6.6 forbids. What that section rules out is
+     * dark patterns and retention offers — persuading someone to stay. Asking
+     * who you are protects the user rather than the business, the export stays
+     * one unauthenticated click away, and nothing here tries to talk anyone out
+     * of leaving.
+     */
+    const parsed = z.object({ password: z.string().min(1) }).safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return problem(
+        reply,
+        req,
+        400,
+        'password-required',
+        'Enter your password to confirm',
+        'Deleting your account is permanent, so Atlas checks it is really you.',
+      );
+    }
+    const { rows: cred } = await pool.query(
+      'SELECT password_hash FROM users WHERE id = $1 AND deleted_at IS NULL',
+      [user.id],
+    );
+    const ok =
+      cred.length > 0 && (await argon2.verify(cred[0].password_hash, parsed.data.password));
+    if (!ok) {
+      await audit(pool, user.id, 'account.delete.denied', 'user', user.id, req.traceId);
+      return problem(reply, req, 401, 'invalid-credentials', 'That password is not correct');
+    }
 
     // Idempotent: a pending request returns the same certificate rather than
     // scheduling a second erasure.

@@ -110,17 +110,22 @@ function Appearance() {
 }
 
 export function SettingsPanel() {
-  const [confirm, setConfirm] = useState('');
+  // Identity, not intent: typing DELETE proved neither, and proved it only
+  // in the browser (P1-2).
+  const [password, setPassword] = useState('');
   const [cert, setCert] = useState<{ certificate: string; scheduled_for: string; note?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const requestDeletion = async () => {
     setError(null);
     try {
-      const res = await api.del<{ data: { certificate: string; scheduled_for: string; note?: string } }>('/v1/account');
+      const res = await api.del<{ data: { certificate: string; scheduled_for: string; note?: string } }>(
+        '/v1/account',
+        { password },
+      );
       setCert(res.data);
     } catch (e) {
-      setError(e instanceof ApiError ? e.problem.title : String(e));
+      setError(e instanceof ApiError ? e.problem.detail ?? e.problem.title : String(e));
     }
   };
 
@@ -153,16 +158,18 @@ export function SettingsPanel() {
         <>
           <p className="muted">
             This permanently erases your data (your audit trail is pseudonymized and retained as required by law). No
-            questions, no retention offers. Type <strong>DELETE</strong> to confirm.
+            questions, no retention offers. Enter your password to confirm it is you.
           </p>
           <div className="inline">
             <input
-              aria-label="Type DELETE to confirm erasing your account"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              placeholder="DELETE"
+              type="password"
+              autoComplete="current-password"
+              aria-label="Your password, to confirm erasing your account"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Your password"
             />
-            <button onClick={requestDeletion} disabled={confirm !== 'DELETE'}>
+            <button onClick={requestDeletion} disabled={password.length === 0}>
               Erase my account
             </button>
           </div>
