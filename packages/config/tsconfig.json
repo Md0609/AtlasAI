@@ -4,12 +4,5 @@
     "rootDir": "src",
     "outDir": "dist"
   },
-  "include": [
-    "src/**/*"
-  ],
-  "references": [
-    {
-      "path": "../config"
-    }
-  ]
+  "include": ["src/**/*"]
 }

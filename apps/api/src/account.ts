@@ -19,11 +19,20 @@ import type pg from 'pg';
 import { enqueue } from '@atlas/bus';
 import { audit, requireUser } from './auth.js';
 import { problem } from './http.js';
+import { intEnv } from '@atlas/config';
 
 /** Grace window before erasure runs (≤30-day SLA). Read per call so a
  *  deployment or test can set it without a rebuild. */
 function graceDays(): number {
-  return Number(process.env.ATLAS_ERASURE_GRACE_DAYS ?? 30);
+  // Measured before this: "abc" produced NaN and wrote an Invalid Date into a
+  // GDPR deadline; "" produced 0 and made erasure due immediately; "-5" made it
+  // due five days ago. A bad value must not silently destroy data early, or
+  // write a date nothing can act on.
+  //
+  // 0 is allowed: "erase immediately" is a deliberate choice, and the silent
+  // failure was "" becoming 0, which raw() now treats as absent. The ceiling is
+  // the Art. 17 SLA the certificate promises the user.
+  return intEnv('ATLAS_ERASURE_GRACE_DAYS', { fallback: 30, min: 0, max: 30 });
 }
 
 async function buildExport(pool: pg.Pool, userId: string): Promise<Record<string, unknown>> {

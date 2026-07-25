@@ -22,6 +22,7 @@
  */
 import { dec } from '@atlas/domain';
 import { cacheGet, cacheKey, cachePut, type Db } from './cache.js';
+import { intEnv } from '@atlas/config';
 import { addCost, checkCostCeiling } from './cost.js';
 
 /**
@@ -31,7 +32,9 @@ import { addCost, checkCostCeiling } from './cost.js';
  * turn rather than losing the job.
  */
 function providerTimeoutMs(): number {
-  return Number(process.env.ATLAS_LLM_TIMEOUT_MS ?? 30_000);
+  // 0 or a negative value would time out every call before it started; NaN
+  // would make the comparison always false and restore the original hang.
+  return intEnv('ATLAS_LLM_TIMEOUT_MS', { fallback: 30_000, min: 1 });
 }
 import { getProvider } from './providers/factory.js';
 import { recordAgentMessage } from './tracing.js';

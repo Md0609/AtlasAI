@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "workspaces": [
+    "packages/config",
     "packages/contracts",
     "packages/domain",
     "packages/schema",

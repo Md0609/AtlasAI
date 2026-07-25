@@ -34,6 +34,12 @@
     },
     {
       "path": "../../packages/portfolio-core"
+    },
+    {
+      "path": "../../packages/config"
+    },
+    {
+      "path": "../../services/intelligence/runtime"
     }
   ]
 }
