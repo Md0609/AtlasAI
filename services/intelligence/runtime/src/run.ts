@@ -23,6 +23,16 @@
 import { dec } from '@atlas/domain';
 import { cacheGet, cacheKey, cachePut, type Db } from './cache.js';
 import { addCost, checkCostCeiling } from './cost.js';
+
+/**
+ * How long any single provider call may take. Read per call so a deployment —
+ * or a test — can set it without a rebuild. 30s is well beyond a healthy
+ * completion and well inside the 300s job lease, so a timeout degrades the
+ * turn rather than losing the job.
+ */
+function providerTimeoutMs(): number {
+  return Number(process.env.ATLAS_LLM_TIMEOUT_MS ?? 30_000);
+}
 import { getProvider } from './providers/factory.js';
 import { recordAgentMessage } from './tracing.js';
 import type { LlmDraft, LlmProvider, LlmToolCall, LlmToolSpec, LlmMessage, ModelTier } from './provider.js';
@@ -127,18 +137,74 @@ export async function runAgent(db: Db, input: RunAgentInput): Promise<RunAgentRe
     }
   }
 
-  // 3. Provider call.
-  const resp = await provider.complete({
-    tier: input.tier,
-    system: input.system,
-    messages: input.messages,
-    maxTokens: input.maxTokens,
-    jsonOutput: input.jsonOutput,
-    tools: input.tools,
-    agent: input.agent,
-    promptVersion: input.promptVersion,
-    fallback: input.fallback,
-  });
+  // 3. Provider call, bounded (P1-5).
+  //
+  // A hung provider used to hang us: no timeout, no signal, so a request that
+  // never came back held its caller forever. In a worker that is a lease-
+  // holding job; on the Copilot path it is an HTTP handler.
+  //
+  // Two mechanisms, both needed. The signal lets a provider that honours it
+  // actually cancel — freeing the socket and stopping the meter. The race
+  // guarantees WE stop waiting even if it does not, because a provider that
+  // ignores its signal is precisely the one that hangs.
+  //
+  // A timeout degrades to the deterministic template rather than throwing:
+  // that is what §B8 asks for and what the cost ceiling above already does.
+  const controller = new AbortController();
+  let timer: NodeJS.Timeout | undefined;
+  // Which side won the race decides which error surfaces: a provider that
+  // aborts cleanly rejects with its own message, one that ignores the signal
+  // loses to the timer. Both are timeouts, so the trace must say so either way
+  // or the same failure appears under two names.
+  let timedOut = false;
+  let resp: Awaited<ReturnType<typeof provider.complete>>;
+  try {
+    resp = await Promise.race([
+      provider.complete({
+        tier: input.tier,
+        system: input.system,
+        messages: input.messages,
+        maxTokens: input.maxTokens,
+        jsonOutput: input.jsonOutput,
+        tools: input.tools,
+        agent: input.agent,
+        promptVersion: input.promptVersion,
+        fallback: input.fallback,
+        signal: controller.signal,
+      }),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          timedOut = true;
+          controller.abort();
+          reject(new Error(`llm timeout after ${providerTimeoutMs()}ms`));
+        }, providerTimeoutMs());
+      }),
+    ]);
+  } catch (err) {
+    controller.abort();
+    const reason = timedOut
+      ? `llm timeout after ${providerTimeoutMs()}ms`
+      : err instanceof Error
+        ? err.message
+        : String(err);
+    const spanId = await recordAgentMessage(db, {
+      traceId: input.traceId,
+      parentSpanId: input.parentSpanId,
+      userId: input.userId,
+      agent: input.agent,
+      promptVersion: input.promptVersion,
+      promptHash: input.promptHash,
+      model: 'degraded:provider_error',
+      inputHash: input.inputHash,
+      output: { text: input.fallback.text, toolCalls: input.fallback.toolCalls ?? [] },
+      gaps: [{ component: input.agent, reason }],
+      costEur: '0',
+      cacheHit: false,
+    });
+    return degradedResult(input.fallback, 'degraded:provider_error', spanId);
+  } finally {
+    clearTimeout(timer);
+  }
   const costEur = resp.degraded ? '0' : provider.priceEur(resp.model, resp.usage);
 
   // 4. Trace (always).

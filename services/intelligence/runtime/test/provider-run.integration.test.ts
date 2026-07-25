@@ -230,3 +230,100 @@ describe('provider factory', () => {
     resetProviderCache();
   });
 });
+
+/**
+ * A hung provider must not hang the caller (P1-5).
+ *
+ * Before this there was no timeout and no signal: a provider that never
+ * answered held its caller forever — a lease-holding job in a worker, an HTTP
+ * handler on the Copilot path.
+ */
+describe('provider timeout', () => {
+  /** Never resolves unless its signal aborts. The failure mode, exactly. */
+  class HangingProvider implements LlmProvider {
+    readonly name = 'hanging';
+    aborted = false;
+    modelFor(): string {
+      return 'hanging-model';
+    }
+    priceEur(): string {
+      return '0';
+    }
+    complete(req: LlmRequest): Promise<LlmResponse> {
+      return new Promise((_resolve, reject) => {
+        req.signal?.addEventListener('abort', () => {
+          this.aborted = true;
+          reject(new Error('aborted'));
+        });
+      });
+    }
+  }
+
+  it('degrades to the deterministic template instead of hanging', async () => {
+    process.env.ATLAS_LLM_TIMEOUT_MS = '150';
+    const provider = new HangingProvider();
+    try {
+      const started = Date.now();
+      const res = await runAgent(
+        pool,
+        baseInput({ provider, inputHash: `timeout-${Date.now()}` }) as never,
+      );
+      const elapsed = Date.now() - started;
+
+      expect(res.degraded).toBe(true);
+      expect(res.text).toBe('The deterministic template answer.');
+      expect(res.model).toBe('degraded:provider_error');
+      expect(res.costEur).toBe('0');
+      // Bounded: it returned near the timeout, not "eventually".
+      expect(elapsed).toBeLessThan(2000);
+    } finally {
+      delete process.env.ATLAS_LLM_TIMEOUT_MS;
+    }
+  });
+
+  it('aborts the signal so the provider can free the socket', async () => {
+    // Giving up without cancelling leaves the request alive, still costing
+    // money and still holding a connection nobody will read.
+    process.env.ATLAS_LLM_TIMEOUT_MS = '150';
+    const provider = new HangingProvider();
+    try {
+      await runAgent(pool, baseInput({ provider, inputHash: `abort-${Date.now()}` }) as never);
+      expect(provider.aborted).toBe(true);
+    } finally {
+      delete process.env.ATLAS_LLM_TIMEOUT_MS;
+    }
+  });
+
+  it('records the timeout as a gap, so a degraded turn is not invisible', async () => {
+    process.env.ATLAS_LLM_TIMEOUT_MS = '150';
+    const traceId = `trace-timeout-${Date.now()}`;
+    try {
+      await runAgent(
+        pool,
+        baseInput({
+          provider: new HangingProvider(),
+          traceId,
+          inputHash: `gap-${Date.now()}`,
+        }) as never,
+      );
+      const { rows } = await pool.query(
+        `SELECT model, gaps FROM agent_messages WHERE trace_id = $1`,
+        [traceId],
+      );
+      expect(rows[0].model).toBe('degraded:provider_error');
+      expect(JSON.stringify(rows[0].gaps)).toContain('llm timeout');
+    } finally {
+      delete process.env.ATLAS_LLM_TIMEOUT_MS;
+    }
+  });
+
+  it('does not fire on a provider that answers in time', async () => {
+    process.env.ATLAS_LLM_TIMEOUT_MS = '5000';
+    try {
+      const res = await runAgent(pool, baseInput({ inputHash: `fast-${Date.now()}` }) as never);
+      expect(res.model).not.toBe('degraded:provider_error');
+    } finally {
+      delete process.env.ATLAS_LLM_TIMEOUT_MS;
+    }
+  });
+});
