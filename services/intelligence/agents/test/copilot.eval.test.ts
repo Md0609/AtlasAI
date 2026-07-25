@@ -35,6 +35,7 @@ const CONTEXT: CopilotContext = {
 function fixedProvider(text: string): LlmProvider {
   return {
     name: 'stub',
+    generative: false,
     modelFor: () => 'stub-mid',
     priceEur: () => '0.0001',
     complete: async (): Promise<LlmResponse> => ({
@@ -45,6 +46,7 @@ function fixedProvider(text: string): LlmProvider {
       model: 'stub-mid',
       provider: 'stub',
       degraded: false,
+      generative: false,
     }),
   };
 }

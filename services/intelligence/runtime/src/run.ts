@@ -74,6 +74,13 @@ export interface RunAgentResult {
   costEur: string;
   cacheHit: boolean;
   degraded: boolean;
+  /**
+   * False when no language model wrote this text — the fixture provider, or any
+   * degradation that returned the caller's deterministic template. Distinct
+   * from `degraded`, which says only that the real provider fell back; a demo
+   * or replay backend is not degraded and is still not analysis.
+   */
+  generative: boolean;
   spanId: string;
 }
 
@@ -110,6 +117,9 @@ export async function runAgent(db: Db, input: RunAgentInput): Promise<RunAgentRe
         costEur: '0',
         cacheHit: true,
         degraded: false,
+        // Only generative output is ever written to the shared cache; a
+        // degraded or fixture turn returns before the cache write.
+        generative: true,
         spanId,
       };
     }
@@ -254,6 +264,7 @@ export async function runAgent(db: Db, input: RunAgentInput): Promise<RunAgentRe
     costEur,
     cacheHit: false,
     degraded: resp.degraded,
+    generative: resp.generative,
     spanId,
   };
 }
@@ -268,6 +279,8 @@ function degradedResult(fallback: LlmDraft, model: string, spanId: string): RunA
     costEur: '0',
     cacheHit: false,
     degraded: true,
+    // A degradation returns the caller's own template. No model wrote it.
+    generative: false,
     spanId,
   };
 }

@@ -25,6 +25,7 @@ let userId: string;
 function fixedProvider(text: string, degraded = false): LlmProvider {
   return {
     name: 'stub',
+    generative: false,
     modelFor: () => 'stub-small',
     priceEur: () => '0.0001',
     complete: async (req): Promise<LlmResponse> => ({
@@ -35,6 +36,7 @@ function fixedProvider(text: string, degraded = false): LlmProvider {
       model: 'stub-small',
       provider: 'stub',
       degraded,
+      generative: false,
     }),
   };
 }

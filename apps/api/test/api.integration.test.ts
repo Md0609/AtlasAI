@@ -237,7 +237,7 @@ describe('exposure endpoint (Signal Engine over real data)', () => {
     const body = res.json();
 
     const sum = body.data.weights.reduce(
-      (a: InstanceType<typeof dec>, w: { weight: string }) => a.plus(w.weight),
+      (a: ReturnType<typeof dec>, w: { weight: string }) => a.plus(w.weight),
       dec(0),
     );
     expect(sum.minus(1).abs().lt('1e-15')).toBe(true);

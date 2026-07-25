@@ -44,6 +44,8 @@ function estimateTokens(text: string): number {
 
 export class FixtureProvider implements LlmProvider {
   readonly name = 'fixture';
+  /** Nothing here is model-written: the "fixture" is the caller's own template. */
+  readonly generative = false;
 
   modelFor(tier: ModelTier): string {
     return TIER_MODEL[tier];
@@ -72,6 +74,8 @@ export class FixtureProvider implements LlmProvider {
       // The fixture always serves the deterministic draft — that IS its answer,
       // not a degradation. `degraded` marks the real provider falling back.
       degraded: false,
+      // …but it is not analysis either, and that must survive to the caller.
+      generative: false,
     };
   }
 }

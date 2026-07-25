@@ -9,6 +9,7 @@ import {
   CLASSIFIER_THRESHOLD,
   classifyRecommendation,
   guardCheck,
+  guardText,
   languageScreen,
   lexicalScreen,
   textHasNumerals,
@@ -246,5 +247,32 @@ describe('language screen (§875 — an escape is an escape in any language)', (
   it('stays quiet on short fragments, where detection would be guesswork', () => {
     expect(languageScreen(segments('Up 3%.'))).toEqual([]);
     expect(languageScreen(segments(''))).toEqual([]);
+  });
+});
+
+
+/**
+ * Approval is not evidence that a model reasoned (P0-1).
+ *
+ * Every degradation path — provider error, timeout, cost ceiling, numeral drift
+ * — returns the caller's deterministic template. That template is compliant by
+ * construction: no directive, no rating, no price target. So the Guard approves
+ * it, correctly. The point is that `approved` and `a model wrote this` are
+ * independent facts which travel separately, and a reader who conflates them
+ * gets a degraded turn exactly backwards.
+ */
+describe('guard approval says nothing about who wrote the text', () => {
+  it('approves the deterministic template a degradation returns', () => {
+    const template = 'Your concentration in this position rose because the price moved.';
+    const verdict = guardText(segments(template));
+    expect(verdict.approved).toBe(true);
+    expect(verdict.violations).toEqual([]);
+  });
+
+  it('applies the same rules to model prose and to template prose', () => {
+    // A directive is rejected wherever it comes from; the Guard has no notion
+    // of provenance and must not grow one.
+    const directive = 'You should sell this position now.';
+    expect(guardText(segments(directive)).approved).toBe(false);
   });
 });

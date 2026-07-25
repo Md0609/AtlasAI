@@ -102,9 +102,10 @@ describe('the gate builds before it runs', () => {
     // pass on code tsc rejects. The build step is what makes `npm test` a gate
     // on types, and what keeps dist/ — which production runs — current.
     const pkg = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8')) as {
-      scripts: Record<string, string>;
+      scripts: Record<string, string | undefined>;
     };
-    expect(pkg.scripts.test).toContain('tsc -b');
-    expect(pkg.scripts.test.indexOf('tsc -b')).toBeLessThan(pkg.scripts.test.indexOf('vitest'));
+    const script = pkg.scripts.test ?? '';
+    expect(script).toContain('tsc -b');
+    expect(script.indexOf('tsc -b')).toBeLessThan(script.indexOf('vitest'));
   });
 });

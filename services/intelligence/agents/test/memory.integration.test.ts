@@ -127,6 +127,7 @@ describe('injection into agent context (FR-10.3)', () => {
     let seenSystem = '';
     const capturing: LlmProvider = {
       name: 'capture',
+      generative: false,
       modelFor: () => 'capture-mid',
       priceEur: () => '0',
       complete: async (req): Promise<LlmResponse> => {
@@ -139,6 +140,7 @@ describe('injection into agent context (FR-10.3)', () => {
           model: 'capture-mid',
           provider: 'capture',
           degraded: false,
+          generative: false,
         };
       },
     };

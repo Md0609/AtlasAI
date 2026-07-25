@@ -24,13 +24,14 @@
   ],
   "scripts": {
     "build": "tsc -b tsconfig.build.json && npm run build -w apps/web",
-    "test": "tsc -b tsconfig.build.json && vitest run",
+    "test": "tsc -b tsconfig.build.json && tsc -p tsconfig.tests.json && vitest run",
     "migrate": "node packages/schema/dist/cli.js up",
     "ingest": "node services/ingest/dist/cli.js run",
     "api": "node apps/api/dist/index.js",
     "quality-report": "node ops/dist/quality-report.js",
     "workers": "node services/workers/dist/cli.js drain",
-    "test:only": "vitest run"
+    "test:only": "vitest run",
+    "typecheck:tests": "tsc -p tsconfig.tests.json"
   },
   "devDependencies": {
     "typescript": "^5.5.4",
