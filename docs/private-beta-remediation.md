@@ -19,7 +19,16 @@ Test Files  6 passed (6)
 Tests      49 passed (49)
 ```
 
-A sabotaged Signal Engine is green. This is the finding that governs the plan's ordering: every other assurance in the review, including its own "verified as sound" section, rests on a gate that does not read the source.
+A sabotaged Signal Engine is green.
+
+**Correction, recorded because it changes what the evidence proves.** That mutant was a poor choice: the review lists it under **P1-2 as surviving in `dist` too**, so it survives for lack of coverage, and my demonstration confounded two causes. The isolated evidence is an A/B on one mutation — `valuation.ts`'s `valueLocal = quantity x close` changed to `x 2`, source only, no rebuild:
+
+| | Result |
+|---|---|
+| Alias disabled (old behaviour) | `Tests 49 passed (49)` |
+| Alias enabled (fixed) | `Tests 9 failed \| 40 passed (49)` |
+
+Same mutation, same tree, one variable. That is the finding properly isolated: every other assurance in the review — including its own "verified as sound" section — rested on a gate that did not read the source.
 
 ### P0-4 confirmed against a live database — the review could not
 
@@ -58,7 +67,7 @@ Ordered by dependency, not by severity. The rationale for each wave is in its he
 
 | Wave | Contents | Why here |
 |---|---|---|
-| **W0** | P0-2 | Nothing below is verifiable until the gate reads source |
+| **W0** | P0-2 | **DONE** — nothing below was verifiable until the gate read source |
 | **W1** | P0-1, P1-13, P1-16 | Config correctness; a wrong deploy must refuse to boot |
 | **W2** | P0-3, P0-4, P1-9, P1-10, P1-11 | The silent-degradation set — the review's central theme |
 | **W3** | P0-5, P0-6, P0-7 | Operational floor; makes the product runnable at all |
@@ -66,7 +75,8 @@ Ordered by dependency, not by severity. The rationale for each wave is in its he
 | **W5** | P1-1, P1-2, P1-3, P2-21 | Close the test gaps W0 just made meaningful |
 | **W6** | P1-4, P1-5, P1-6, P1-7, P1-8, P2-1 | Correctness and performance on the write/read paths |
 | **W7** | P1-12, P2-8, P2-9 | Frontend honesty and accessibility |
-| **—** | P0-9, P1-22 | **Blocked on your decision** |
+| **W8** | P1-19, FR-12.2 | Unmet `[MVP]` MUSTs that do not depend on counsel |
+| **—** | P0-9 (FR-12.1 half), P1-22 | **Blocked**: legal input / PRD ownership |
 
 ---
 
@@ -253,7 +263,83 @@ Deliberately after W0: written before it, these tests would pass against stale `
 
 ---
 
-## 10. Blocked on your decision
+
+## 9b. W8 — Unmet `[MVP]` MUSTs that need no legal input
+
+Both are mandatory requirements that are currently unimplemented while reading
+as met. Neither depends on Q-01.
+
+### P1-19 · Quiet hours (FR-8.6) do not exist anywhere
+
+`[MVP]` MUST. §18.4 carries a dedicated quiet-hours-exempt column for all eight
+notification classes and §18.8 lists "anything during quiet hours except C0" as
+an explicitly banned anti-pattern. A repo-wide grep for
+`quiet_hours|quietHours|timezone` returns **one hit, in a test comment**.
+`user_notification_prefs` holds only `weekly_budget_delta` — there is no
+timezone field with which to prevent a 03:00 notification.
+
+Atlas's entire claim is restraint. This is the most user-visible promise in §18
+and it is absent.
+
+**Change:** add user timezone and a quiet window to `user_notification_prefs`;
+a dispatcher check in the notification path with a single C0 exemption, matching
+the §18.4 table.
+
+**Open question for implementation:** what happens to a non-C0 brief raised
+during quiet hours — deferred to the window's end, or dropped and folded into
+the Weekly Review? §18.4 says exempt/not-exempt but not the disposition. The
+suppression machinery already exists and already records a reason, so deferral
+is the smaller change and keeps the "nothing is deleted" promise the Today
+surface makes. Will flag rather than decide silently.
+
+**Cost:** 6h incl. migration · **Risk:** medium — touches the dispatch path.
+
+### FR-12.2 · No "AI-generated" marker on model-generated prose
+
+`[MVP]` MUST. Atlas ships model-generated prose across Reality Check narration,
+briefs, Copilot and contextualization with nothing identifying it as
+AI-generated. The Guard protects the *content*; nothing establishes the
+*posture*.
+
+**Why this half is not blocked:** the requirement is that model-generated output
+be labelled. What the label *says* is a copy decision. It carries no
+jurisdiction-specific legal claim, so it does not wait on Q-01 — unlike FR-12.1,
+whose text is a legal artefact.
+
+**Change:** a persistent marker on every surface rendering `UserFacingContent`.
+Pairs naturally with P1-10 (rendering `degraded`), which touches the same
+footers.
+
+**Cost:** 3h · **Risk:** low.
+
+## 10. Decisions taken (2026-07-25)
+
+Recorded here so the waves below are read against them.
+
+**Deployment — W3 stays blocked, deliberately.** Atlas is not being deployed
+yet, so no platform-specific work lands. **The single decision W3 needs is: what
+runs the processes?** Everything else follows mechanically from it — the process
+definition's format (Dockerfile / compose / systemd unit / PaaS manifest), the
+migrate-then-start ordering, the restart policy, the static route for
+`apps/web/dist`, and **P1-16's `trustProxy` CIDR**, which cannot be set to a
+correct value without knowing the proxy in front. Setting it to `true` instead
+would let any client forge `X-Forwarded-For` and evade the rate limit entirely,
+which is worse than today. So P1-16 waits with W3 rather than shipping a guess.
+
+Nothing else in the plan depends on this. W0-W2 and W4-W8 are all
+platform-neutral.
+
+**P0-9 splits.** FR-12.2 (the "AI-generated" marker) is a product requirement
+with no legal content: the PRD requires that model-generated prose be labelled
+as such, and what the label says is a copy decision, not counsel's. It moves
+into **W8**. FR-12.1 (the jurisdiction disclosure gate) stays blocked — its text
+is a legal artefact and §56 Q-01 is still marked **Blocking**. No placeholder
+text will be invented, and it will not be marked resolved.
+
+**P1-19 (quiet hours) is treated as an `[MVP]` MUST**, not a product option. It
+moves out of "not in scope" into **W8** and is a beta blocker.
+
+## 11. Still blocked
 
 ### P0-9 · FR-12.1 / FR-12.2 — jurisdiction disclosure and AI labelling
 
@@ -261,9 +347,7 @@ Both are `[MVP]` MUSTs. Atlas ships model-generated prose across Reality Check, 
 
 **Why I am not planning an implementation:** §56 Q-01 — "Is the Contextualization Doctrine legally durable in DE/FR/NL/ES?" — is still marked **Blocking** in the PRD. The disclosure text is a legal artefact, and building a versioned acknowledgement flow before counsel says what must be acknowledged means building the wrong thing carefully.
 
-**What I can do without a lawyer:** the AI-generated marker (FR-12.2) is a product decision, not a legal one, and could ship in W7 as a persistent marker on every surface rendering `UserFacingContent`.
-
-**Needed from you:** (a) does the private beta proceed before counsel answers Q-01? (b) should I implement FR-12.2's marker now and leave FR-12.1's gate for after?
+**Resolved:** FR-12.2's marker is in **W8**. FR-12.1's gate remains blocked on Q-01 — no text invented, not marked resolved.
 
 ### P1-22 · Three spec documents disagree, and the PRD is nominally authoritative
 
@@ -280,11 +364,158 @@ Verified: `grep -c "A4.1"` on the PRD → `0`, while 33 code sites cite `§A*` s
 Tracked, not planned. Each is defensible to carry into a hand-held private beta.
 
 - **P2-2** erasure misses events partitioned by portfolio · **P2-3** `agent_messages` retains verbatim Layer-2 output forever · **P2-4** no session revocation short of 7 days · **P2-5** a `buy` with only `amount` silently creates no position · **P2-6** currency decomposition falls back to a future price · **P2-7** weekly budget unclamped · **P2-10** CSV import has no parsed-row preview · **P2-11** pool hardcoded at 10 · **P2-12** no version stamp · **P2-13** Node unpinned · **P2-14** undeclared cross-workspace devDeps (**breaks the moment P0-7 uses per-service images** — revisit then) · **P2-15** contracts is types-only · **P2-16** dead `internal.ts` · **P2-17** bus tables read outside the bus · **P2-18** agents does its own SQL · **P2-19** §9 NFRs unmeasurable · **P2-20** "Persona" names two concepts · **P2-22** suite hangs without Postgres · **P2-24** `resetDatabase` ships in production `dist/`
-- **P1-14** worker metrics · **P1-15** migration advisory lock · **P1-17** portfolio logic marooned in HTTP handlers · **P1-18** 307 untyped queries · **P1-19** quiet hours (FR-8.6, `[MVP]` MUST — **carrying a known unmet MUST into beta is your call, not mine**) · **P1-20** Red Team not run on thesis creation · **P1-21** Copilot omits the §31.4 envelope
+- **P1-14** worker metrics · **P1-15** migration advisory lock · **P1-17** portfolio logic marooned in HTTP handlers · **P1-18** 307 untyped queries · **P1-20** Red Team not run on thesis creation · **P1-21** Copilot omits the §31.4 envelope
 
-Two of these deserve a second look before beta despite being out of scope: **P2-22** (a suite that hangs rather than fails burns the CI timeout W0 introduces, and skipped tests read as green to a reporter) and **P1-19** (an unmet `[MVP]` MUST that is also the most user-visible promise in §18).
+**P1-19 is no longer here** — it is an `[MVP]` MUST and moved to W8.
+
+One more deserves a second look despite being out of scope: **P2-22** (a suite that hangs rather than fails burns a CI timeout, and a failed `beforeAll` reports its tests as *skipped*, which reads as green to a reporter counting tests rather than exit codes).
 
 ---
+
+
+---
+
+# W0 — COMPLETED 2026-07-25
+
+## The problem
+
+`npm test` could pass against source that was never executed. The Signal Engine
+— the module this repo calls its release gate — was gradeable only in whatever
+state it had last been compiled in.
+
+## Root cause
+
+Two mechanisms, and only the first was in the review.
+
+**1. Every workspace entry point is compiled output.** All 16 buildable
+workspaces declare `"main": "dist/index.js"` (and `@atlas/api`,
+`"dist/server.js"`). `node_modules/@atlas/*` are symlinks to the workspace
+directories, so Vite's resolver reads those manifests and loads `dist/`. A test
+importing `@atlas/signal-engine` graded the previous build.
+
+**2. Resolution was MIXED, and this was not previously identified.** Tests
+inside a workspace mostly import `../src/`, while the Signal Engine's three most
+important suites (`golden`, `properties`, `adversarial`) and every `apps/api`
+integration test import `@atlas/*`. Several files did both at once —
+`radar.test.ts` imports `../src/radar.js` *and* `@atlas/contracts`.
+
+The consequence is worse than staleness. Measured directly:
+
+```
+identical namespace object? false
+identical function ref?     false
+```
+
+Importing `@atlas/guard` and `guard/src/index.ts` in one test yielded two
+distinct module instances. Five modules hold module-level state —
+`factory.ts`'s provider override and cache, `observability.ts`'s counters,
+`auth.ts`'s decoy hash, `embedder.ts`'s cache — and each would have had two
+independent copies. A test calling `setProviderForTests()` through one
+specifier while the code under test reads the other would configure nothing,
+and pass.
+
+## The fix
+
+**1. `vitest.config.ts` aliases every `@atlas/*` specifier to TypeScript
+source.** The map is *derived* from each workspace's own entry point rather
+than hardcoded, so a new package is covered when it is created, and a package
+whose entry is not `index` (`@atlas/api` → `src/server.ts`) needs no special
+case. Subpath exports are emitted before their bare package and every pattern is
+anchored, so `@atlas/api` cannot swallow `@atlas/api/internal`.
+
+This removes both defects at once: no compiled artefact remains that could be
+stale, and one specifier means one instance.
+
+**2. `"test": "tsc -b tsconfig.build.json && vitest run"`.** Still required
+after the alias, for a reason the alias cannot cover: **Vitest transforms with
+esbuild, which erases types without checking them.** Without the build step the
+suite would pass on code `tsc` rejects. The build also keeps `dist/` current,
+which is what production actually runs. `test:only` was added for the inner
+development loop where the build is redundant.
+
+**3. `apps/web` added to the test glob.** It had none, so a frontend test could
+not have run even if written. Tests are a later wave; this stops that wave
+having to fix the config too.
+
+## Evidence
+
+An A/B on a single mutation — `valuation.ts`'s `valueLocal = quantity x close`
+changed to `x 2`, in **source only**, with no rebuild:
+
+| Configuration | Result |
+|---|---|
+| Alias disabled (old behaviour) | `Test Files 6 passed \| Tests 49 passed (49)` |
+| Alias enabled (fixed) | `Test Files 2 failed \| Tests 9 failed, 40 passed (49)` |
+
+Restoring the source returns the suite to green. One variable, opposite results.
+
+**Integration path verified separately**, because `apps/api` tests import
+`@atlas/api` rather than relative source. Mutating `apps/api/src/server.ts`
+(`frame-ancestors 'none'` → `'self'`), no rebuild:
+
+```
+x security headers > cannot be framed - the clickjacking fix that matters most
+  -> expected 'default-src...' to contain "frame-ancestors 'none'"
+```
+
+Restored, and the file returns to 5/5.
+
+## Tests added
+
+`evals/architecture/resolution.test.ts`, 6 cases. They do not re-run a mutation
+— a test cannot usefully sabotage the tree it runs in — they pin the properties
+that make mutation detectable:
+
+- the same function reference through the package name and through `src/`
+  (measured `false` before the fix), for both `@atlas/guard` and
+  `@atlas/signal-engine`;
+- module-level state shared across specifiers;
+- every `@atlas` specifier maps to a `.ts` under `src/` and never into `dist/`;
+- every workspace building to `dist` has an alias, checked against the manifests
+  rather than a hardcoded list;
+- `@atlas/api/internal` resolves to `src/internal.ts` and is ordered before the
+  bare package;
+- `npm test` runs `tsc -b` before `vitest`.
+
+Removing the alias fails these immediately.
+
+## Verification commands
+
+```bash
+npm run build                     # tsc -b across 18 workspaces + apps/web
+npm test                          # build, then the full suite
+npx vitest run evals/architecture/resolution.test.ts
+
+# Reproduce the A/B (restore the file afterwards):
+#   edit services/signal-engine/src/valuation.ts, append .times(2) to valueLocal
+npx vitest run services/signal-engine   # expect failures WITHOUT rebuilding
+```
+
+## Result
+
+```
+Build:  clean (tsc -b + vite, 18 workspaces)
+Suite:  391 passed / 43 files   (was 385 / 42)
+```
+
+## Discovered during W0, not previously recorded
+
+- **Mixed resolution and dual module instances** (above). The review reported
+  the gate as reading `dist`; it read both, inconsistently, sometimes within one
+  file.
+- **My own P0-2 evidence was confounded.** The `concentration.ts` mutant I first
+  used survives in `dist` too, for lack of coverage (the review's P1-2). It
+  demonstrated nothing about staleness. Corrected in §0 with the isolated A/B.
+- **`@atlas/api/internal` has no importers**, confirming P2-16: all five
+  repo-wide references are comments. It is still a published subpath advertising
+  API internals, and it is now also an alias rule that exists only to keep a
+  dead export resolvable.
+
+## Pending decisions from W0
+
+None. The wave introduced no architectural choice needing approval: aliasing
+test resolution to source changes what the suite reads, not what the product
+does, and `dist/` remains exactly what production runs.
 
 ## 12. Effort
 
