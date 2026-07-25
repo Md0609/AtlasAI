@@ -78,6 +78,13 @@ export interface LlmRequest {
   promptVersion: string;
   /** The deterministic template output (§B8). Mock returns it; real provider degrades to it. */
   fallback: LlmDraft;
+  /**
+   * Aborted when the caller stops waiting. A real provider MUST pass this to
+   * its HTTP client: the runtime stops waiting on its own either way, but
+   * without this the request stays alive on the socket, still costing money
+   * and still holding a connection nobody will read.
+   */
+  signal?: AbortSignal;
 }
 
 export interface LlmResponse {

@@ -130,7 +130,7 @@ describe('DELETE /v1/account — GDPR erasure', () => {
     expect(before.theses).toBe(1);
     expect(before.copilot_messages).toBeGreaterThan(0);
 
-    const del = await inject(victim, { method: 'DELETE', url: '/v1/account' });
+    const del = await inject(victim, { method: 'DELETE', url: '/v1/account', payload: { password: 'password1234' } });
     expect(del.statusCode).toBe(202);
     const cert = del.json().data.certificate as string;
     expect(cert).toMatch(/^atlas-erasure-/);
@@ -171,8 +171,9 @@ describe('DELETE /v1/account — GDPR erasure', () => {
 
   it('is idempotent: a second request returns the same certificate', async () => {
     const s = await register('twice@example.es');
-    const a = await inject(s, { method: 'DELETE', url: '/v1/account' });
-    const b = await inject(s, { method: 'DELETE', url: '/v1/account' });
+    const pw = { password: 'password1234' };
+    const a = await inject(s, { method: 'DELETE', url: '/v1/account', payload: pw });
+    const b = await inject(s, { method: 'DELETE', url: '/v1/account', payload: pw });
     expect(a.statusCode).toBe(202);
     expect(b.statusCode).toBe(202); // still authed during the grace window
     expect(a.json().data.certificate).toBe(b.json().data.certificate);
@@ -185,5 +186,46 @@ describe('DELETE /v1/account — GDPR erasure', () => {
     // A plain DELETE (no erasure GUC) is still refused.
     await expect(pool.query(`DELETE FROM decisions WHERE id=$1`, [rows[0].id])).rejects.toThrow(/append-only/);
     expect(aaplId).toBeTruthy();
+  });
+});
+
+describe('DELETE /v1/account requires re-authentication (P1-2)', () => {
+  it('refuses without a password — a session alone must not destroy an account', async () => {
+    // Before this, a stolen cookie or a borrowed laptop was enough. The typed
+    // "DELETE" confirmation is client-side only: it proves intent, not identity.
+    const s = await register('reauth-none@example.es');
+    const res = await inject(s, { method: 'DELETE', url: '/v1/account' });
+    expect(res.statusCode).toBe(400);
+    const { rows } = await pool.query('SELECT count(*)::int n FROM account_deletions WHERE user_id = $1', [s.userId]);
+    expect(rows[0].n).toBe(0);
+  });
+
+  it('refuses a wrong password, and records the attempt', async () => {
+    const s = await register('reauth-wrong@example.es');
+    const res = await inject(s, { method: 'DELETE', url: '/v1/account', payload: { password: 'not-my-password' } });
+    expect(res.statusCode).toBe(401);
+    const { rows } = await pool.query('SELECT count(*)::int n FROM account_deletions WHERE user_id = $1', [s.userId]);
+    expect(rows[0].n).toBe(0);
+    // A failed attempt to destroy an account is worth having in the trail.
+    const audit = await pool.query(
+      `SELECT count(*)::int n FROM audit_log WHERE actor_user_id = $1 AND action = 'account.delete.denied'`,
+      [s.userId],
+    );
+    expect(audit.rows[0].n).toBe(1);
+  });
+
+  it('proceeds with the correct password', async () => {
+    const s = await register('reauth-ok@example.es');
+    const res = await inject(s, { method: 'DELETE', url: '/v1/account', payload: { password: 'password1234' } });
+    expect(res.statusCode).toBe(202);
+    expect(res.json().data.certificate).toMatch(/^atlas-erasure-/);
+  });
+
+  it('leaves the export unauthenticated-by-password — §6.6 forbids friction on leaving', async () => {
+    // The check is identity, not retention: getting your data out must stay as
+    // easy as it was.
+    const s = await register('reauth-export@example.es');
+    const res = await inject(s, { method: 'GET', url: '/v1/account/export' });
+    expect(res.statusCode).toBe(200);
   });
 });

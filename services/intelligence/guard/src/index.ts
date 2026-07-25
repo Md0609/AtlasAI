@@ -6,6 +6,9 @@
  * non-bypassable: there is no other path from generated content to a user.
  * (Enforced by the architecture tests, not by convention.)
  *
+ * Layer 0 (language) runs first: an English-only rule set cannot vouch for
+ * text it cannot read, so unreadable output is rejected rather than passed.
+ *
  * Three layers, cheapest first (§A4.1):
  *   1. structural — schema-level; unprovenanced numerals unrepresentable
  *   2. lexical    — deterministic directive screen, versioned rule set
@@ -16,6 +19,7 @@
 import type { ContextualizationDoc, GuardVerdict } from '@atlas/contracts';
 import { structuralCheck } from './structural.js';
 import { LEXICAL_RULESET_VERSION, lexicalScreen, type LexicalInputSegment } from './lexical.js';
+import { languageScreen } from './language.js';
 import { CLASSIFIER_VERSION, classifyRecommendation } from './classifier.js';
 
 export interface GuardInput {
@@ -28,6 +32,9 @@ export function guardCheck(input: GuardInput): GuardVerdict {
   const started = performance.now();
   const violations = [
     ...structuralCheck(input.doc),
+    // Layer 0 first: if the text is not in the language the screens below can
+    // read, their silence means nothing (see language.ts).
+    ...languageScreen(input.rendered),
     ...lexicalScreen(input.rendered),
   ];
   const clf = classifyRecommendation(input.rendered);
@@ -57,7 +64,7 @@ export function guardCheck(input: GuardInput): GuardVerdict {
  */
 export function guardText(rendered: LexicalInputSegment[]): GuardVerdict {
   const started = performance.now();
-  const violations = [...lexicalScreen(rendered)];
+  const violations = [...languageScreen(rendered), ...lexicalScreen(rendered)];
   const clf = classifyRecommendation(rendered);
   violations.push(...clf.violations);
   return {
@@ -74,3 +81,4 @@ export { LEXICAL_RULES, LEXICAL_RULESET_VERSION, lexicalScreen } from './lexical
 export type { LexicalInputSegment } from './lexical.js';
 export { structuralCheck, textHasNumerals } from './structural.js';
 export { CLASSIFIER_THRESHOLD, CLASSIFIER_VERSION, classifyRecommendation } from './classifier.js';
+export { LANGUAGE_SCREEN_VERSION, languageScreen } from './language.js';

@@ -260,26 +260,71 @@ export function registerCopilotRoutes(app: FastifyInstance, pool: pg.Pool): void
     });
     if (answer.guardApproved) await rememberTurn(pool, user.id, thread, parsed.data.message, answer.text);
 
+    /**
+     * From here the reply is hijacked: Fastify's error handling no longer
+     * applies, so anything thrown below is an unhandled exception in a process
+     * with no uncaughtException handler. A user closing the tab mid-stream
+     * makes the socket emit ECONNRESET/EPIPE, and writing to it throws — one
+     * navigation away could take the API down for everyone.
+     *
+     * The turn is already persisted at this point, so a stream that dies costs
+     * nothing: the answer is in the thread and the client reads it on reload.
+     */
     reply.hijack();
     const raw = reply.raw;
-    raw.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
+
+    // A socket error must never reach the process. Once the peer is gone there
+    // is nothing to say and nothing to clean up beyond stopping.
+    let closed = false;
+    const stop = () => {
+      closed = true;
+    };
+    raw.on('error', (err) => {
+      stop();
+      req.log.info({ err, traceId: req.traceId }, 'copilot stream ended early');
     });
-    // Stream the guarded text in word chunks — real SSE, honest content.
-    const tokens = answer.text.match(/\S+\s*/g) ?? [answer.text];
-    for (const t of tokens) {
-      raw.write(`event: delta\ndata: ${JSON.stringify({ delta: t })}\n\n`);
-    }
-    raw.write(
-      `event: done\ndata: ${JSON.stringify({
+    raw.on('close', stop);
+
+    /** Every write goes through here: after a close, writes are dropped. */
+    const send = (event: string, data: unknown): boolean => {
+      if (closed || raw.destroyed || raw.writableEnded) return false;
+      try {
+        raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+        return true;
+      } catch (err) {
+        stop();
+        req.log.info({ err, traceId: req.traceId }, 'copilot stream write failed');
+        return false;
+      }
+    };
+
+    try {
+      raw.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+      });
+      // Stream the guarded text in word chunks — real SSE, honest content.
+      const tokens = answer.text.match(/\S+\s*/g) ?? [answer.text];
+      for (const t of tokens) {
+        if (!send('delta', { delta: t })) break;
+      }
+      send('done', {
         id: msg.id,
         degraded: answer.degraded,
         guard_approved: answer.guardApproved,
         created_at: msg.created_at,
-      })}\n\n`,
-    );
-    raw.end();
+      });
+    } catch (err) {
+      req.log.warn({ err, traceId: req.traceId }, 'copilot stream failed');
+    } finally {
+      if (!raw.destroyed && !raw.writableEnded) {
+        try {
+          raw.end();
+        } catch {
+          // The peer is already gone; there is nothing left to close.
+        }
+      }
+    }
   });
 }

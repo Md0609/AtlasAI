@@ -3,6 +3,9 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
+    // Quiet by default: the suite is not a log-reading exercise. The
+    // observability test opts back in by passing buildServer its own stream.
+    env: { ATLAS_LOG: 'off' },
     // Integration suites share one Postgres database — run files sequentially.
     fileParallelism: false,
     include: [
