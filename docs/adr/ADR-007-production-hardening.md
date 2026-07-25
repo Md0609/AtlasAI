@@ -71,3 +71,60 @@ triggered.
   specified as a stateless library with no network and no I/O (§A3.2/§A3.3).
   A versioned deterministic heuristic matches both that constraint and the
   existing classifier's design.
+
+---
+
+## 2. Job leases (P0-3)
+
+**Decision:** `job_queue.locked_until`. A claim takes a 300s lease; an expired
+lease makes the job claimable again and stops it blocking its partition.
+
+**Why it needed a decision at all:** it changes delivery characteristics. A
+crashed worker's job now runs a second time. That is already the contract
+(D-010, at-least-once, idempotent consumers, dedup at the effect boundary), so
+the change makes the implementation match the stated semantics rather than
+introducing new ones — the previous behaviour was *stronger* than promised in
+the happy path and catastrophic in the unhappy one.
+
+**Consequence:** a reclaim counts as an attempt, so a payload that kills its
+worker reaches the DLQ rather than cycling forever.
+
+## 3. Re-authentication before erasure (P1-2)
+
+**Decision:** `DELETE /v1/account` requires the password.
+
+**Tension considered:** §6.6 forbids friction at cancellation. Read carefully,
+it forbids *dark patterns and retention offers* — persuasion. Verifying
+identity protects the user, not the business: nothing asks why, nothing is
+offered to change their mind, and the export stays exactly as reachable as
+before (pinned by a test). Rejected the alternative of leaving a session
+sufficient: a stolen cookie destroying an irreplaceable reasoning history is
+not a risk this product can carry.
+
+## 4. Provider timeout degrades rather than throws (P1-5)
+
+**Decision:** 30s default, both an `AbortSignal` and a `Promise.race`.
+
+Both are needed: the signal lets a cooperative provider cancel and stop the
+meter; the race protects against the provider that ignores it, which is
+precisely the one that hangs. On timeout the turn degrades to the deterministic
+template — the same path as refusal, numeral drift and the cost ceiling — so no
+new failure mode enters the system.
+
+Timeout (30s) is deliberately well inside the job lease (300s): a slow turn
+should degrade, never lose its job.
+
+## What was NOT done, and why
+
+- **Rule-set i18n (F-40).** v1.1 per the PRD. Layer 0 makes English-only safe;
+  it does not make Atlas multilingual.
+- **Redis-backed rate limiting.** Out of scope by instruction. The in-memory
+  store still means the limit is per process and `trustProxy` is still unset,
+  so behind a load balancer the login limiter is either useless or a global
+  lockout. **This is the largest remaining gap before a public deployment.**
+- **Register account enumeration.** `409 email-taken` still discloses that an
+  address is registered. Closing it means replying 202 and sending an email —
+  a new feature.
+- **Real token streaming.** The Copilot still generates fully before writing.
+  Deliberate (nothing unscreened reaches a user), but with a live provider the
+  user waits on a spinner for the whole generation. A product decision.
