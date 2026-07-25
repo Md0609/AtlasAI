@@ -53,10 +53,12 @@ export function loggerOptions(stream?: NodeJS.WritableStream): object | boolean 
       // strings on this API carry portfolio ids, and a URL is the single most
       // common place personal data leaks into a log aggregator.
       req(req: FastifyRequest) {
+        // No traceId here: pino writes "incoming request" before the onRequest
+        // hook runs, so it would always be empty — and pino's own reqId is the
+        // same value, since req.traceId is assigned from req.id.
         return {
           method: req.method,
           path: req.routeOptions?.url ?? req.url.split('?')[0],
-          traceId: req.traceId,
         };
       },
       res(res: FastifyReply) {
