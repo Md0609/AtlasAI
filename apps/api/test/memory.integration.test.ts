@@ -126,7 +126,8 @@ describe('memory is exportable and erasable (FR-10.5)', () => {
     const exp = await inject({ method: 'GET', url: '/v1/account/export' });
     expect(exp.json().data.memory_items.length).toBeGreaterThan(0);
 
-    const del = await inject({ method: 'DELETE', url: '/v1/account' });
+    // Erasure now re-authenticates (P1-2).
+    const del = await inject({ method: 'DELETE', url: '/v1/account', payload: { password: 'password1234' } });
     expect(del.statusCode).toBe(202);
     const { stats } = await buildRunner(pool).drain();
     expect(stats.dead).toBe(0);
