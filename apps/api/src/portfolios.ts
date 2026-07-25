@@ -108,7 +108,7 @@ export async function recomputeDerivedState(client: pg.PoolClient, portfolioId: 
   const { rows: txs } = await client.query(
     `SELECT security_id, tx_type, quantity, price, amount, currency, fee
        FROM transactions WHERE portfolio_id = $1
-      ORDER BY trade_date, created_at`,
+      ORDER BY trade_date, seq`,
     [portfolioId],
   );
 

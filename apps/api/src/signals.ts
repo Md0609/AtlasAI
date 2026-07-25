@@ -150,7 +150,7 @@ async function computePerformance(
 ): Promise<PerfOut | null> {
   const { rows: txs } = await pool.query(
     `SELECT security_id, tx_type, trade_date::text, quantity::text, amount::text, currency
-       FROM transactions WHERE portfolio_id = $1 ORDER BY trade_date, created_at`,
+       FROM transactions WHERE portfolio_id = $1 ORDER BY trade_date, seq`,
     [portfolio.id],
   );
   if (txs.length === 0) return null;
