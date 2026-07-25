@@ -22,6 +22,7 @@
  */
 import { dec } from '@atlas/domain';
 import { cacheGet, cacheKey, cachePut, type Db } from './cache.js';
+import { intEnv } from '@atlas/config';
 import { addCost, checkCostCeiling } from './cost.js';
 
 /**
@@ -31,7 +32,9 @@ import { addCost, checkCostCeiling } from './cost.js';
  * turn rather than losing the job.
  */
 function providerTimeoutMs(): number {
-  return Number(process.env.ATLAS_LLM_TIMEOUT_MS ?? 30_000);
+  // 0 or a negative value would time out every call before it started; NaN
+  // would make the comparison always false and restore the original hang.
+  return intEnv('ATLAS_LLM_TIMEOUT_MS', { fallback: 30_000, min: 1 });
 }
 import { getProvider } from './providers/factory.js';
 import { recordAgentMessage } from './tracing.js';
@@ -74,6 +77,13 @@ export interface RunAgentResult {
   costEur: string;
   cacheHit: boolean;
   degraded: boolean;
+  /**
+   * False when no language model wrote this text — the fixture provider, or any
+   * degradation that returned the caller's deterministic template. Distinct
+   * from `degraded`, which says only that the real provider fell back; a demo
+   * or replay backend is not degraded and is still not analysis.
+   */
+  generative: boolean;
   spanId: string;
 }
 
@@ -110,6 +120,9 @@ export async function runAgent(db: Db, input: RunAgentInput): Promise<RunAgentRe
         costEur: '0',
         cacheHit: true,
         degraded: false,
+        // Only generative output is ever written to the shared cache; a
+        // degraded or fixture turn returns before the cache write.
+        generative: true,
         spanId,
       };
     }
@@ -254,6 +267,7 @@ export async function runAgent(db: Db, input: RunAgentInput): Promise<RunAgentRe
     costEur,
     cacheHit: false,
     degraded: resp.degraded,
+    generative: resp.generative,
     spanId,
   };
 }
@@ -268,6 +282,8 @@ function degradedResult(fallback: LlmDraft, model: string, spanId: string): RunA
     costEur: '0',
     cacheHit: false,
     degraded: true,
+    // A degradation returns the caller's own template. No model wrote it.
+    generative: false,
     spanId,
   };
 }

@@ -66,6 +66,7 @@ function scriptedProvider(texts: string[]): LlmProvider {
   let i = 0;
   return {
     name: 'stub',
+    generative: false,
     modelFor: () => 'stub-mid',
     priceEur: () => '0.001',
     complete: async (): Promise<LlmResponse> => {
@@ -79,6 +80,7 @@ function scriptedProvider(texts: string[]): LlmProvider {
         model: 'stub-mid',
         provider: 'stub',
         degraded: false,
+        generative: false,
       };
     },
   };

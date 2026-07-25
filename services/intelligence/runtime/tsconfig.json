@@ -5,9 +5,18 @@
     "outDir": "dist",
     "composite": true
   },
-  "include": ["src"],
+  "include": [
+    "src"
+  ],
   "references": [
-    { "path": "../../../packages/contracts" },
-    { "path": "../../../packages/domain" }
+    {
+      "path": "../../../packages/contracts"
+    },
+    {
+      "path": "../../../packages/domain"
+    },
+    {
+      "path": "../../../packages/config"
+    }
   ]
 }

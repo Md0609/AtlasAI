@@ -50,7 +50,7 @@ async function fundAndBuyAapl(s: Session): Promise<string> {
     headers: { 'content-type': 'application/json', cookie: s.cookie },
   });
   const portfolioId = p.json().id;
-  const post = (payload: unknown) =>
+  const post = (payload: Record<string, unknown>) =>
     app.inject({
       method: 'POST',
       url: `/v1/portfolios/${portfolioId}/transactions`,

@@ -6,19 +6,47 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import pg from 'pg';
+import {
+  ConfigError,
+  DEV_DATABASE_URL,
+  intEnv,
+  isProduction,
+  postgresUrlEnv,
+} from '@atlas/config';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const MIGRATIONS_DIR = join(HERE, '..', 'migrations');
 
 export function connectionString(): string {
-  return (
-    process.env.ATLAS_DATABASE_URL ??
-    'postgres://atlas:atlas@127.0.0.1:5432/atlas'
-  );
+  // The development fallback stays: requiring a URL to run the suite would be
+  // the wrong trade. What changed is that production must not reach it — see
+  // assertDatabaseConfig, called from every process entry point.
+  return postgresUrlEnv('ATLAS_DATABASE_URL', { fallback: DEV_DATABASE_URL });
+}
+
+/**
+ * Refuse to start against the published development database, or with no URL
+ * at all, in production. Those credentials are in this repository and in every
+ * developer's shell history; reaching a real deployment is a compromise, not a
+ * slip.
+ */
+export function assertDatabaseConfig(): void {
+  if (!isProduction()) return;
+  const url = process.env.ATLAS_DATABASE_URL;
+  if (!url) throw new ConfigError('ATLAS_DATABASE_URL is required in production');
+  postgresUrlEnv('ATLAS_DATABASE_URL');
+  if (url === DEV_DATABASE_URL) {
+    throw new ConfigError(
+      'ATLAS_DATABASE_URL is the published development database. Refusing to start in production.',
+    );
+  }
 }
 
 export function createPool(url?: string): pg.Pool {
-  return new pg.Pool({ connectionString: url ?? connectionString(), max: 10 });
+  return new pg.Pool({
+    connectionString: url ?? connectionString(),
+    max: intEnv('ATLAS_DB_POOL_MAX', { fallback: 10, min: 1, max: 100 }),
+  });
 }
 
 export interface MigrationResult {

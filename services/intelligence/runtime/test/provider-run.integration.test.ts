@@ -139,6 +139,7 @@ describe('runAgent — cost governance (§37.3)', () => {
     await addCost(pool, userId, 'copilot', '1.99'); // near the €2/day cap
     const neverCall: LlmProvider = {
       name: 'never',
+      generative: false,
       modelFor: () => 'x',
       priceEur: () => '0',
       complete: async () => {
@@ -163,6 +164,7 @@ describe('runAgent — provider degradation', () => {
   it('a degraded provider response costs nothing, writes no cache, and is traced degraded', async () => {
     const degrading: LlmProvider = {
       name: 'degrading',
+      generative: false,
       modelFor: () => 'x',
       priceEur: () => '9.99',
       complete: async (req): Promise<LlmResponse> => ({
@@ -173,6 +175,7 @@ describe('runAgent — provider degradation', () => {
         model: 'x',
         provider: 'degrading',
         degraded: true,
+        generative: false,
       }),
     };
     const res = await runAgent(pool, baseInput({ userId: null, inputHash: 'deg-1', provider: degrading }));
@@ -242,6 +245,7 @@ describe('provider timeout', () => {
   /** Never resolves unless its signal aborts. The failure mode, exactly. */
   class HangingProvider implements LlmProvider {
     readonly name = 'hanging';
+    readonly generative = false;
     aborted = false;
     modelFor(): string {
       return 'hanging-model';

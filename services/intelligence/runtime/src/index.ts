@@ -36,6 +36,7 @@ export { FixtureProvider } from './providers/fixture.js';
 export { AnthropicProvider, AnthropicProviderNotConfiguredError } from './providers/anthropic.js';
 export {
   getProvider,
+  LlmProviderNotConfiguredError,
   setProviderForTests,
   resetProviderCache,
   type ProviderName,

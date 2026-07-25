@@ -1,0 +1,13 @@
+// vite.config.ts
+import { defineConfig } from "file:///sessions/serene-stoic-mayer/mnt/atlas-ai/node_modules/vite/dist/node/index.js";
+import react from "file:///sessions/serene-stoic-mayer/mnt/atlas-ai/node_modules/@vitejs/plugin-react/dist/index.js";
+var vite_config_default = defineConfig({
+  plugins: [react()],
+  server: {
+    proxy: { "/v1": "http://localhost:3000", "/healthz": "http://localhost:3000" }
+  }
+});
+export {
+  vite_config_default as default
+};
+//# sourceMappingURL=data:application/json;base64,ewogICJ2ZXJzaW9uIjogMywKICAic291cmNlcyI6IFsidml0ZS5jb25maWcudHMiXSwKICAic291cmNlc0NvbnRlbnQiOiBbImNvbnN0IF9fdml0ZV9pbmplY3RlZF9vcmlnaW5hbF9kaXJuYW1lID0gXCIvc2Vzc2lvbnMvc2VyZW5lLXN0b2ljLW1heWVyL21udC9hdGxhcy1haS9hcHBzL3dlYlwiO2NvbnN0IF9fdml0ZV9pbmplY3RlZF9vcmlnaW5hbF9maWxlbmFtZSA9IFwiL3Nlc3Npb25zL3NlcmVuZS1zdG9pYy1tYXllci9tbnQvYXRsYXMtYWkvYXBwcy93ZWIvdml0ZS5jb25maWcudHNcIjtjb25zdCBfX3ZpdGVfaW5qZWN0ZWRfb3JpZ2luYWxfaW1wb3J0X21ldGFfdXJsID0gXCJmaWxlOi8vL3Nlc3Npb25zL3NlcmVuZS1zdG9pYy1tYXllci9tbnQvYXRsYXMtYWkvYXBwcy93ZWIvdml0ZS5jb25maWcudHNcIjtpbXBvcnQgeyBkZWZpbmVDb25maWcgfSBmcm9tICd2aXRlJztcbmltcG9ydCByZWFjdCBmcm9tICdAdml0ZWpzL3BsdWdpbi1yZWFjdCc7XG5cbmV4cG9ydCBkZWZhdWx0IGRlZmluZUNvbmZpZyh7XG4gIHBsdWdpbnM6IFtyZWFjdCgpXSxcbiAgc2VydmVyOiB7XG4gICAgcHJveHk6IHsgJy92MSc6ICdodHRwOi8vbG9jYWxob3N0OjMwMDAnLCAnL2hlYWx0aHonOiAnaHR0cDovL2xvY2FsaG9zdDozMDAwJyB9LFxuICB9LFxufSk7XG4iXSwKICAibWFwcGluZ3MiOiAiO0FBQXdVLFNBQVMsb0JBQW9CO0FBQ3JXLE9BQU8sV0FBVztBQUVsQixJQUFPLHNCQUFRLGFBQWE7QUFBQSxFQUMxQixTQUFTLENBQUMsTUFBTSxDQUFDO0FBQUEsRUFDakIsUUFBUTtBQUFBLElBQ04sT0FBTyxFQUFFLE9BQU8seUJBQXlCLFlBQVksd0JBQXdCO0FBQUEsRUFDL0U7QUFDRixDQUFDOyIsCiAgIm5hbWVzIjogW10KfQo=

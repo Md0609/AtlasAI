@@ -12,6 +12,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type pg from 'pg';
 import { z } from 'zod';
 import { problem } from './http.js';
+import { boolEnv, intEnv, isProduction } from '@atlas/config';
 
 const SESSION_COOKIE = 'atlas_session';
 const SESSION_TTL_DAYS = 7;
@@ -34,9 +35,10 @@ function cookieSecure(): boolean {
  * each half a control.
  */
 export function tlsExpected(): boolean {
-  return process.env.ATLAS_COOKIE_SECURE !== undefined
-    ? process.env.ATLAS_COOKIE_SECURE === 'true'
-    : process.env.NODE_ENV === 'production';
+  // `x === 'true'` read TRUE, 1, yes and on as FALSE — an operator who believed
+  // they had enabled Secure cookies and HSTS had enabled neither. boolEnv
+  // accepts the forms people write and throws on anything else.
+  return boolEnv('ATLAS_COOKIE_SECURE', { fallback: isProduction() });
 }
 
 export interface AuthedUser {
@@ -121,8 +123,13 @@ const loginSchema = z.object({
 export function registerAuthRoutes(app: FastifyInstance, pool: pg.Pool): void {
   // Read at registration (not module load) so a deployment — or a test — can
   // set the limits before the server is built.
-  const LOGIN_LIMIT = Number(process.env.ATLAS_RATE_LIMIT_LOGIN ?? 20);
-  const REGISTER_LIMIT = Number(process.env.ATLAS_RATE_LIMIT_REGISTER ?? 10);
+  // A limit of NaN (previously reachable with any non-numeric value) leaves the
+  // limiter in an undefined state on the one endpoint that faces credential
+  // stuffing. min: 1 also rules out 0, which would lock everyone out. No
+  // ceiling: a very large limit is a deliberate "effectively unlimited", and an
+  // arbitrary maximum would reject a real configuration to prevent nothing.
+  const LOGIN_LIMIT = intEnv('ATLAS_RATE_LIMIT_LOGIN', { fallback: 20, min: 1 });
+  const REGISTER_LIMIT = intEnv('ATLAS_RATE_LIMIT_REGISTER', { fallback: 10, min: 1 });
 
   app.post('/v1/auth/register', {
     config: { rateLimit: { max: REGISTER_LIMIT, timeWindow: '1 hour' } },

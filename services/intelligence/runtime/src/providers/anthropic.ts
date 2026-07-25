@@ -71,6 +71,7 @@ export class AnthropicProviderNotConfiguredError extends Error {
 const SDK_MODULE = '@anthropic-ai/sdk';
 
 export class AnthropicProvider implements LlmProvider {
+  readonly generative = true;
   readonly name = 'anthropic';
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private client: any = null;
@@ -160,6 +161,7 @@ export class AnthropicProvider implements LlmProvider {
       model,
       provider: this.name,
       degraded: false,
+      generative: true,
     };
   }
 
@@ -172,6 +174,9 @@ export class AnthropicProvider implements LlmProvider {
       model,
       provider: this.name,
       degraded: true,
+      // A degraded turn returns the caller's deterministic template verbatim.
+      // It came from this provider, but no model wrote it.
+      generative: false,
     };
   }
 }

@@ -68,11 +68,11 @@ Ordered by dependency, not by severity. The rationale for each wave is in its he
 | Wave | Contents | Why here |
 |---|---|---|
 | **W0** | P0-2 | **DONE** — nothing below was verifiable until the gate read source |
-| **W1** | P0-1, P1-13, P1-16 | Config correctness; a wrong deploy must refuse to boot |
+| **W1** | P0-1, P1-13, P1-2 | **DONE** — config correctness; a wrong deploy must refuse to boot |
 | **W2** | P0-3, P0-4, P1-9, P1-10, P1-11 | The silent-degradation set — the review's central theme |
 | **W3** | P0-5, P0-6, P0-7 | Operational floor; makes the product runnable at all |
 | **W4** | P0-8 | Time-sensitive: every beta day without it is ungradeable forever |
-| **W5** | P1-1, P1-2, P1-3, P2-21 | Close the test gaps W0 just made meaningful |
+| **W5** | P1-1, P1-3, P2-21 | Close the remaining test gaps (P1-2 done in W1) |
 | **W6** | P1-4, P1-5, P1-6, P1-7, P1-8, P2-1 | Correctness and performance on the write/read paths |
 | **W7** | P1-12, P2-8, P2-9 | Frontend honesty and accessibility |
 | **W8** | P1-19, FR-12.2 | Unmet `[MVP]` MUSTs that do not depend on counsel |
@@ -516,6 +516,170 @@ Suite:  391 passed / 43 files   (was 385 / 42)
 None. The wave introduced no architectural choice needing approval: aliasing
 test resolution to source changes what the suite reads, not what the product
 does, and `dist/` remains exactly what production runs.
+
+
+---
+
+# W1 — COMPLETED 2026-07-25
+
+## P0-1 · Provider default
+
+**Reproduced first, end to end**, with `ATLAS_LLM_PROVIDER=anthropicc` and
+`NODE_ENV=production`:
+
+| Stage | Observed |
+|---|---|
+| config | typo accepted |
+| provider | `fixture`, selected silently by the ternary's else arm |
+| runtime | `degraded: false` |
+| guard | `approved: true`, 0 violations |
+| HTTP | `{ "degraded": false, "guard_approved": true }` |
+| ledger | cost debited, synthetic prices |
+
+**Discrepancy with the review:** it states nothing downstream distinguishes the
+two. The persisted trace *does* — `agent_messages.model` reads `fixture-mid`.
+Invisible to the user and to the API, not to an operator querying the database.
+
+**Fix.** Selection is a lookup in an exhaustive `Record<ProviderName, …>`, so
+adding a provider without a factory is a compile error. An unrecognised value
+throws **everywhere**, development included — a typo is a typo, and failing on
+the developer's machine is what stops it reaching a deployment. An absent value
+stays the fixture in development (§B8 is mock-first) and throws in production.
+An explicit `fixture` in production is still allowed: that is a decision, not an
+accident, and demo mode is legitimate.
+
+**Second half**, because fail-fast only covers production: `LlmProvider` now
+declares `generative`, propagated through `LlmResponse` and `RunAgentResult`.
+`degraded` could not carry this — it means "the real provider fell back", a
+different fact, and overloading it would make every development run look like a
+failure. Every degradation path returns the caller's own template, so all report
+`generative: false`.
+
+## P1-13 · Configuration
+
+Measured against the previous code:
+
+| Variable | Value | Old behaviour |
+|---|---|---|
+| `ATLAS_ERASURE_GRACE_DAYS` | `abc` | `NaN` → `Invalid Date` |
+| | `""` | `0` → erasure due immediately |
+| | `-5` | erasure due five days ago |
+| `ATLAS_RATE_LIMIT_LOGIN` | `abc` | `NaN` → limiter undefined |
+| `ATLAS_LLM_TIMEOUT_MS` | `0` | every call times out |
+| `ATLAS_COOKIE_SECURE` | `TRUE`, `1`, `yes` | **`false`, silently** |
+| `PORT` | `abc` | `NaN` |
+
+The boolean cases are the worst: `1` and `TRUE` are the natural ways to write
+"yes" and both failed to the **insecure** side while looking configured.
+
+**Discrepancy with the review**, verified against a running API. It states that
+`ATLAS_ERASURE_GRACE_DAYS=abc` "writes an Invalid Date into
+`account_deletions.scheduled_for`". It does not: `toISOString()` throws
+`RangeError` before the INSERT, so the request returns **500 and no row is
+written**. Account deletion is broken rather than silently wrong — worse for the
+user, better for data integrity. The genuinely silent corruptions are `""` and
+negative values, which produce valid-but-wrong dates and *are* persisted.
+
+**Fix.** New `@atlas/config`, because three workspaces read env and
+`packages/schema` depends only on `pg`. `intEnv` rejects NaN, Infinity,
+fractions and out-of-range; `boolEnv` accepts `true/false/1/0/yes/no/on/off` and
+throws on anything else; `postgresUrlEnv` validates the scheme; `assertConfig`
+reports **every** problem at once. `apps/api/src/index.ts` validates before
+constructing anything, and `assertDatabaseConfig` refuses the published
+development database in production.
+
+**Bounds were wrong on the first pass**, and the correction is the point. I set
+ceilings by instinct and broke four legitimate cases: `grace_days=0` (used by
+two suites), `rate_limit=100000` (the timing test), `timeout=150` (the timeout
+test). The rule applied instead: **refuse what is always a bug** — NaN, negative,
+0 where 0 is absurd — **not what is merely unusual**. Empty-as-absent is what
+closes the silent grace-period case, so an explicit `0` can remain a valid
+choice.
+
+## P1-2 · Surviving mutants
+
+Each reproduced in isolation, then killed, then the code restored and re-run.
+
+| Mutant | Result |
+|---|---|
+| `performance.ts:38` `denom.isZero()` → `false` | killed, 2 failures |
+| `performance.ts:74` sign-change → `false` | killed, 1 failure |
+| `performance.ts:62` one-signed → `false` | killed, 1 failure |
+| `concentration.ts:30` `gt(0)` → `gte(0)` | killed, 1 failure |
+
+**Discrepancy with the review, and the most important finding of W1.** It called
+`performance.ts:62` unkillable — "the line-74 guard redundantly catches the same
+case". It does not. With **all-zero cashflows** the NPV at the low bracket bound
+is exactly zero, so `if (fLo.isZero()) return lo` fires and returns the bound:
+
+```
+with line 62:     null
+without line 62:  -0.9999      <- a fabricated -99.99% return
+```
+
+A portfolio whose flows net to zero — bought and sold at the same price, or
+never funded — would have been shown a near-total loss. Line 62 is load-bearing,
+not defensive duplication.
+
+Finding that temporarily cost M2 its coverage: with line 62 present, the
+single-signed cases return before reaching line 74, so the sign-change guard
+needed a real IRR outside the `[-99.99%, +1000%]` bracket. The two guards
+overlap in one direction only, and only measurement exposed which.
+
+## New findings from W1
+
+**N-1 · Test files were never type-checked** (fixed in W1). No `tsconfig`
+included `test/` — all 17 use `include: ["src"]` — and Vitest transforms with
+esbuild, which erases types without checking them. So ~4,000 lines of test code
+had no type checking at all.
+
+Demonstrated by the `generative` change: adding a required property to
+`LlmProvider` *should* have broken five mocks, and the build stayed green. A
+one-off check found 19 errors — 16 from that change, 3 pre-existing
+(`InstanceType<typeof dec>` on a factory function, an `unknown` payload, and an
+unguarded optional index read in a test I wrote in W0).
+
+Fixed: `tsconfig.tests.json` plus `npm test` = `tsc -b && tsc -p
+tsconfig.tests.json && vitest run`. It immediately caught a missing import while
+I was relocating an assertion.
+
+**N-2 · The §47.2 guard rule matches comments, not just imports.** A test
+mentioning the guard package *in a comment* trips it. Correct bias — a rule that
+fails open would be worse — but worth knowing before it costs someone an hour.
+Not changed.
+
+**N-3 · `@atlas/api/internal` is now also an alias rule.** W0's source aliasing
+had to map the dead subpath to keep it resolvable. Reinforces P2-16: the module
+has no importers and should be deleted.
+
+## Verification
+
+```bash
+npm run build            # tsc -b, 19 workspaces + apps/web
+npm test                 # build, typecheck tests, then the suite
+npm run typecheck:tests  # tests alone
+
+# Reproduce the provider failure (pre-fix behaviour needs the old ternary):
+NODE_ENV=production ATLAS_LLM_PROVIDER=anthropicc node -e "…getProvider()"
+
+# Reproduce the mutants (restore each file afterwards):
+#   performance.ts:38 / :62 / :74, concentration.ts:30
+npx vitest run services/signal-engine/golden/declared-gaps.test.ts
+```
+
+## Result
+
+```
+Build:  clean
+Suite:  448 passed / 48 files   (was 391 / 43 at the end of W0)
+Tests added: 57
+```
+
+## Still blocked after W1
+
+- **P1-16** (`trustProxy`) — waits on the deployment decision, as agreed. Now
+  documented in `.env.example` beside the rate limits it affects.
+- **FR-12.1** — waits on §56 Q-01.
 
 ## 12. Effort
 
