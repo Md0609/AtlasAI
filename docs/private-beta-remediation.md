@@ -69,7 +69,7 @@ Ordered by dependency, not by severity. The rationale for each wave is in its he
 |---|---|---|
 | **W0** | P0-2 | **DONE** — nothing below was verifiable until the gate read source |
 | **W1** | P0-1, P1-13, P1-2 | **DONE** — config correctness; a wrong deploy must refuse to boot |
-| **W2** | P0-3, P0-4, P1-9, P1-10, P1-11 | The silent-degradation set — the review's central theme |
+| **W2** | P0-3, P0-4, P1-9, P1-10, P1-11 | **DONE** — the silent-degradation set |
 | **W3** | P0-5, P0-6, P0-7 | Operational floor; makes the product runnable at all |
 | **W4** | P0-8 | Time-sensitive: every beta day without it is ungradeable forever |
 | **W5** | P1-1, P1-3, P2-21 | Close the remaining test gaps (P1-2 done in W1) |
@@ -680,6 +680,123 @@ Tests added: 57
 - **P1-16** (`trustProxy`) — waits on the deployment decision, as agreed. Now
   documented in `.env.example` beside the rate limits it affects.
 - **FR-12.1** — waits on §56 Q-01.
+
+
+---
+
+# W2 — COMPLETED 2026-07-26
+
+Every finding reproduced before being fixed, and every fix verified to fail
+against the previous behaviour.
+
+## P0-4 · Cost basis determinism
+
+`created_at` is `transaction_timestamp()`, constant across a transaction;
+`id` is a random uuid. Measured: three rows inserted in one transaction share
+ONE `created_at`, so `(trade_date, created_at)` ties completely.
+
+Buy 10@100, buy 10@200, sell 10 on one date, folded two ways:
+
+| Order | Result |
+|---|---|
+| insertion | qty 10, cost 1500 (**avg 150**) |
+| sell first | qty 10, cost 3000 (**avg 300**) |
+
+Migration 021 adds `transactions.seq`, backfilled by `(trade_date, created_at,
+id)` rather than heap order, then made an identity. Both folds order by
+`(trade_date, seq)`. `transactions_portfolio_idx` replaced by
+`transactions_fold_idx`, the fold's exact access path.
+
+**Verified:** against a tied ordering the average-cost assertion reports
+`expected 300 to be 150`.
+
+## P0-3 · FX gaps, both halves
+
+**Backend.** Two bare `if (rate === null) continue;` — positions and cash — with
+no gap, directly after a missing-PRICE branch that pushes one, in a file whose
+deposit branch declares this exact gap. Both now declare it, naming the
+consequence ("excluded from the value series") rather than only the missing
+input.
+
+**Frontend.** Only the surprises branch rendered warnings, gaps and provenance.
+Each branch now contributes a body; a single return renders `<Caveats>`
+unconditionally, so a future branch cannot omit them.
+
+**Verified:** 2 of 5 tests fail against the bare `continue`.
+
+## P1-9 · Staleness
+
+`valuation.ts` took the MAXIMUM price date and the UI prints it as a claim about
+the whole portfolio. Both the engine and the performance series now report the
+OLDEST contributing price.
+
+**Verified:** 2 of 5 tests fail against the max. One existing assertion in
+`api.integration.test.ts` was pinning the defect (`prices_as_of ===
+SNAPSHOT_TO`) and was updated to assert the guarantee, with the reason inline.
+
+## P1-10 + P1-11 · Provenance across the boundary
+
+Audited `provider → runtime → agents → egress → API → contracts → SPA` as
+requested. `generative` **died at agents**:
+
+```
+runtime 23 refs | agents 0 | egress 0 | API 0 | contracts 0 | SPA 0
+```
+
+The truth table now carried end to end, with the two fields kept apart:
+
+| generative | degraded | Meaning |
+|---|---|---|
+| true | false | a model wrote it, normally |
+| false | true | the provider failed; this is the template |
+| false | false | **fixture/demo, or template kept by choice** |
+| true | true | impossible — a degradation returns the template |
+
+The third row is what made P0-1 invisible. The fixture is not degraded and is
+not analysis, and `degraded` cannot be stretched to cover it without lying about
+what it means.
+
+Migration 022 persists `generative` on `copilot_messages`, defaulting to false
+for existing rows. The 201 payload now sends `degraded`, `generative` and
+`guard_approved`; the SPA types are non-optional, which turned the drift into a
+compile error and immediately caught the optimistic placeholders.
+
+Rendering is silent on the healthy path — a badge on every normal answer trains
+people to stop reading badges.
+
+**Verified:** 2 of 4 boundary tests fail against the previous 201 payload.
+Browser-verified end to end: the Copilot reads "Written by Atlas from your own
+figures, not by a model."
+
+## New findings
+
+**N-4 · Migrations are not applied on deploy or on start.** The dev database was
+two migrations behind and every Copilot call returned 500 until `schema up` was
+run by hand. Not new code — a consequence of P0-7 having no migrate-then-start
+ordering — but it is now demonstrated rather than theorised, and it will bite
+the first environment that is not a laptop. **Blocks beta**, already inside
+P0-7's scope.
+
+**N-5 · `packages/contracts` still knows neither field.** The SPA hand-declares
+its own copies, which is the root cause of P1-11 rather than the instance fixed
+here. Making `apps/web` depend on `@atlas/contracts` would make this class of
+drift a compile error at the boundary instead of at the consumer. Deferred by
+the review and still deferred; **does not block beta** now that the specific
+drift is closed and the fields are non-optional.
+
+## Evidence
+
+```
+Build:      clean (tsc -b, 19 workspaces + apps/web)
+Typecheck:  clean (production + tests)
+Suite:      466 passed / 51 files   (452 / 49 at the end of W1)
+Tests added: 18 (4 cost basis, 5 FX, 5 staleness, 4 boundary)
+```
+
+## Still blocked
+
+- **P1-16** (`trustProxy`) — deployment decision.
+- **FR-12.1** — §56 Q-01.
 
 ## 12. Effort
 
