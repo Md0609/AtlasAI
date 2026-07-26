@@ -71,7 +71,7 @@ Ordered by dependency, not by severity. The rationale for each wave is in its he
 | **W1** | P0-1, P1-13, P1-2 | **DONE** — config correctness; a wrong deploy must refuse to boot |
 | **W2** | P0-3, P0-4, P1-9, P1-10, P1-11 | **DONE** — the silent-degradation set |
 | **W3** | P0-5, P0-6, P0-7 | **Group A DONE**; Group B blocked on the platform decision |
-| **W4** | P0-8 | Time-sensitive: every beta day without it is ungradeable forever |
+| **W4** | P0-8 | **DONE** — capture landed before any beta day was lost |
 | **W5** | P1-1, P1-3, P2-21 | Close the remaining test gaps (P1-2 done in W1) |
 | **W6** | P1-4, P1-5, P1-6, P1-7, P1-8, P2-1 | Correctness and performance on the write/read paths |
 | **W7** | P1-12, P2-8, P2-9 | Frontend honesty and accessibility |
@@ -939,6 +939,109 @@ job itself is one line: `npm ci && npm run build && npm test`.
 
 The script exists and is rehearsed. Retention, destination and schedule are
 deployment decisions.
+
+
+---
+
+# STATUS AFTER W0–W4 (2026-07-26)
+
+Four categories, kept apart because they need different kinds of answer.
+
+## 1 · Closed
+
+| # | Finding | Wave |
+|---|---|---|
+| P0-1 | LLM provider silently defaulted to the fixture | W1 |
+| P0-2 | Test gate executed `dist/`, not `src/` | W0 |
+| P0-3 | Missing FX silently deleted value; UI hid gaps | W2 |
+| P0-4 | Cost basis non-deterministic | W2 |
+| P0-5 | Nothing ran the workers or their schedule | W3-A |
+| P0-6 | No graceful shutdown, no crash handlers | W3-A |
+| P0-8 | Contextualizations generated and discarded | W4 |
+| P1-1 | Login enumeration by timing (388× → 1.17×) | pre-W0 |
+| P1-2 | Five surviving mutants on the declared-gap guards | W1 |
+| P1-9 | `prices_as_of` reported the newest price | W2 (+W4 coverage) |
+| P1-10 | `degraded` transmitted and rendered nowhere | W2 |
+| P1-11 | Contract drift failed open on the Copilot opener | W2 |
+| P1-13 | No boot-time configuration validation | W1 |
+| P1-15 | Migration runner had no advisory lock | W3-A |
+| N-1 | Test files were never type-checked | W1 |
+| N-4 | Migrations not applied on deploy or start | W3-A |
+| N-6 | Fastify `close()` does not drain in-flight requests | W3-A |
+| N-7 | `generative` never reached the PSA path | W4 |
+
+Two earlier findings were closed before this plan existed and are listed for
+completeness: P0-4's sibling **P1-4/P1-5** are NOT closed (see §2).
+
+## 2 · Open, and implementable now
+
+Nothing blocks a private beta. Ordered by what I would do next.
+
+| # | Finding | Why it is not done |
+|---|---|---|
+| P1-1* | No route tested as the wrong tenant | W5. Security verified no IDOR exists across ~64 routes; nothing asserts it |
+| P1-3 | Guard's quoted-span carve-out has zero tests | W5 |
+| P1-4 | CSV import is quadratic | W6 |
+| P1-5 | Performance endpoint loads unbounded market data | W6 |
+| P1-6 | Job lease has no fencing on completion | W6 |
+| P1-7 | No idempotency key on `/import` | W6 |
+| P1-8 | Ticker-change rewrite is non-transactional | W6 |
+| P1-12 | Two list surfaces render failure as emptiness | W7 |
+| P1-14 | Workers emit no metrics | later |
+| P1-17 | Portfolio derivation lives in HTTP handlers | later |
+| P1-18 | 307 untyped queries | later |
+| P1-19 | **Quiet hours (FR-8.6) — an unmet `[MVP]` MUST** | W8; you ruled it a beta blocker |
+| P1-20 | Red Team not run on thesis creation | later |
+| P1-21 | Copilot omits the §31.4 envelope | later |
+| FR-12.2 | "AI-generated" marker | W8 |
+| P2-1…24 | See §11 | mixed |
+
+**\*** P1-1 appears twice in the source review under different numbering; this is
+the test-coverage one, not the timing one.
+
+## 3 · Blocked by the deployment decision
+
+Not preferences — each needs a fact only the target supplies. Detailed in W3
+Group B above.
+
+| # | Missing input |
+|---|---|
+| B-1 | What supervises the processes (determines the file's format) |
+| B-2 | The proxy's CIDR for `trustProxy` — `true` is worse than today |
+| B-3 | Whether this API, a CDN, or the platform serves `apps/web/dist` |
+| B-4 | Where a daily EOD ingest runs |
+| B-5 | The CI provider |
+| B-6 | Backup destination, retention, schedule |
+| P1-16 | Same as B-2 |
+| P2-11 | Pool sizing follows from instance count |
+
+## 4 · Blocked by a legal or product decision
+
+| # | Needs |
+|---|---|
+| P0-9 / FR-12.1 | Counsel. §56 Q-01 ("Is the Contextualization Doctrine legally durable in DE/FR/NL/ES?") is still marked **Blocking** in the PRD. No text has been invented and it is not marked resolved |
+| P1-22 | Your call on the PRD. Verified: `grep -c "A4.1"` on the PRD returns 0 while 33 code sites cite it; §21.6 line 2570 specifies a Layer-4 LLM judge that is not built; FR-3.1 says ≥5 portfolios against `MAX_PORTFOLIOS = 3`. The document should change, and it is not mine to edit silently |
+
+## 5 · Accepted technical debt
+
+Carried knowingly into a private beta, with the reason.
+
+- **Register enumeration** (`409 email-taken`). Closing it means replying 202
+  and sending an email — a new feature.
+- **The Copilot "stream" replays finished text.** Deliberate: nothing
+  unscreened reaches a user. With a live provider the user waits on a spinner
+  for the whole generation.
+- **`packages/contracts` is types-only** (N-5, P2-15). The SPA hand-declares its
+  own copies; the specific drift is closed and the fields are now non-optional.
+- **The Guard's layer 3 is 12 regex** called `heuristic.v0`. Documented in the
+  PRD's own terms; the L4 judge is P1-22's question.
+- **Rule-set i18n is v1.1** (F-40). Layer 0 makes English-only *safe* by failing
+  closed; it does not make Atlas multilingual.
+- **Shutdown can take the full grace period** when keep-alive sockets are open
+  (N-6). Correct and bounded, but worth knowing when setting a supervisor's
+  termination timeout.
+- **`apps/web` has no tests** (P2-23). The glob is now open; the tests are W7.
+- **P2-2…24** generally — see the original review; none blocks a private beta.
 
 ## 12. Effort
 
