@@ -14,9 +14,9 @@
  */
 import { createPool, migrate, pendingMigrations } from '@atlas/schema';
 import { queueStats } from '@atlas/bus';
-import { boolEnv } from '@atlas/config';
+import { boolEnv, intEnv } from '@atlas/config';
 import { StopSignal, installLifecycle } from '@atlas/lifecycle';
-import { buildRunner } from './index.js';
+import { buildRunner, scheduleWeeklyReviews } from './index.js';
 
 const cmd = process.argv[2];
 if (cmd !== 'drain' && cmd !== 'watch') {
@@ -64,7 +64,37 @@ if (cmd === 'drain') {
   await pool.end();
 } else {
   console.log('workers: watching (SIGTERM or Ctrl-C to stop)');
+
+  /**
+   * Due-work sweep (P0-5).
+   *
+   * scheduleWeeklyReviews existed and was called from NOTHING but tests, so no
+   * user would ever have received a Weekly Review. It is due-based and
+   * idempotent — it skips users who already have this week's review or a job in
+   * flight — which is what makes it safe to call on a plain interval and safe
+   * to run in several worker processes at once.
+   *
+   * Deliberately in-process rather than an external cron: it needs no
+   * infrastructure decision, it stops when the worker stops, and a missed sweep
+   * self-corrects on the next one because the check is "is it due?", not "did
+   * the timer fire?".
+   */
+  const sweepEveryMs = intEnv('ATLAS_SWEEP_INTERVAL_MS', { fallback: 60_000, min: 1_000 });
+  let lastSweep = 0;
+
   while (!stop.requested()) {
+    if (Date.now() - lastSweep >= sweepEveryMs) {
+      lastSweep = Date.now();
+      try {
+        const queued = await scheduleWeeklyReviews(pool);
+        if (queued > 0) console.log(`workers: queued ${queued} weekly review(s)`);
+      } catch (err) {
+        // A failed sweep must not kill the loop that drains the queue; the next
+        // sweep re-evaluates from scratch.
+        console.error('workers: weekly-review sweep failed', err);
+      }
+    }
+
     const n = await runner.tick();
     // sleep() returns early on a stop request, so a shutdown does not wait out
     // the poll interval before noticing.
