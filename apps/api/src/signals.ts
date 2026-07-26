@@ -150,7 +150,7 @@ async function computePerformance(
 ): Promise<PerfOut | null> {
   const { rows: txs } = await pool.query(
     `SELECT security_id, tx_type, trade_date::text, quantity::text, amount::text, currency
-       FROM transactions WHERE portfolio_id = $1 ORDER BY trade_date, created_at`,
+       FROM transactions WHERE portfolio_id = $1 ORDER BY trade_date, seq`,
     [portfolio.id],
   );
   if (txs.length === 0) return null;
@@ -264,13 +264,41 @@ async function computePerformance(
         continue;
       }
       const rate = fxRate(bar.ccy, portfolio.base_currency, day);
-      if (rate === null) continue;
+      if (rate === null) {
+        // Without this the position is silently dropped from the day's value.
+        // TWR, MWR and both drawdowns are then computed over an understated
+        // series and returned with gaps: [] — and when the rate reappears the
+        // value jumps, which the user reads as a return that never happened.
+        // The deposit branch above already declares exactly this gap, and the
+        // engine does too (valuation.ts): the omission was here, not the
+        // convention.
+        if (!gapNoted.has(`fx-${bar.ccy}`)) {
+          gapNoted.add(`fx-${bar.ccy}`);
+          gaps.push({
+            component: 'performance',
+            reason: `no FX path ${bar.ccy}→${portfolio.base_currency}; holdings priced in it are excluded from the value series`,
+          });
+        }
+        continue;
+      }
       value = value.plus(q.times(bar.px).times(rate));
-      if (!pricesAsOf || bar.d > pricesAsOf) pricesAsOf = bar.d;
+      // Oldest, not newest — same reasoning as valuation.ts (P1-9): this date
+      // is rendered as a claim about the whole series, so it must be the one
+      // from which every contributing price is at least as old.
+      if (!pricesAsOf || bar.d < pricesAsOf) pricesAsOf = bar.d;
     }
     for (const [ccy, amt] of cash) {
       const rate = fxRate(ccy, portfolio.base_currency, day);
-      if (rate === null) continue;
+      if (rate === null) {
+        if (!gapNoted.has(`fx-cash-${ccy}`)) {
+          gapNoted.add(`fx-cash-${ccy}`);
+          gaps.push({
+            component: 'performance',
+            reason: `no FX path ${ccy}→${portfolio.base_currency}; cash held in it is excluded from the value series`,
+          });
+        }
+        continue;
+      }
       value = value.plus(amt.times(rate));
     }
     series.push({ date: day, value: str(value) });

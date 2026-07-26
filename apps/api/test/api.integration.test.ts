@@ -250,7 +250,13 @@ describe('exposure endpoint (Signal Engine over real data)', () => {
     expect(body.provenance.engineVersion).toBeTruthy();
     expect(body.provenance.inputHash).toMatch(/^[0-9a-f]{64}$/);
     expect(body.provenance.methodology).toBe('exposure.sector.v1');
-    expect(body.staleness.prices_as_of).toBe(SNAPSHOT_TO);
+    // P1-9: this is the OLDEST contributing price, not the newest. It is
+    // rendered as an unqualified claim about the whole portfolio, so the
+    // maximum let one stale position hide behind a fresh date while still
+    // counting toward value, weights and concentration. This assertion used to
+    // read SNAPSHOT_TO and was pinning the defect.
+    expect(body.staleness.prices_as_of).toBeTruthy();
+    expect(body.staleness.prices_as_of <= SNAPSHOT_TO).toBe(true);
     expect(body.data.concentration.nominalN).toBeGreaterThan(0);
   });
 

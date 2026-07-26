@@ -68,6 +68,13 @@ export interface CopilotTurnInput {
 export interface CopilotTurnResult {
   text: string;
   degraded: boolean;
+  /**
+   * false ⇒ no language model wrote this text. See NarrateResult for the full
+   * truth table; the short version is that `degraded` reports a provider
+   * falling back while `generative` reports whether a model wrote the words,
+   * and the fixture is not degraded yet is still not analysis.
+   */
+  generative: boolean;
   model: string;
   guardApproved: boolean;
   traceId: string;
@@ -258,6 +265,7 @@ export async function answerCopilot(db: Db, input: CopilotTurnInput): Promise<Co
 
   let text = fallback;
   let degraded = false;
+  let generative = false;
   let model = provider.name;
 
   // Bounded tool loop (§11.2 "tool-use through the provider"). Tools are
@@ -282,6 +290,7 @@ export async function answerCopilot(db: Db, input: CopilotTurnInput): Promise<Co
     });
     model = result.model;
     degraded = result.degraded;
+    generative = result.generative;
     text = result.text;
 
     if (result.toolCalls.length === 0 || hop === MAX_TOOL_HOPS) break;
@@ -301,6 +310,8 @@ export async function answerCopilot(db: Db, input: CopilotTurnInput): Promise<Co
   if (!numeralsSubset(text, allowedNumerals)) {
     text = fallback;
     degraded = true;
+    // The user now reads the deterministic fallback, whatever wrote the draft.
+    generative = false;
   }
 
   // Gate 3: the Guard (via egress — the sole guard caller).
@@ -318,12 +329,14 @@ export async function answerCopilot(db: Db, input: CopilotTurnInput): Promise<Co
         'Atlas can only describe what it can source for this, and it could not do that here ' +
         'without crossing into advice. Try asking about a specific figure Atlas already shows you.',
       degraded: true,
+      // A refusal string written by Atlas, not by a model.
+      generative: false,
       model,
       guardApproved: false,
       traceId,
     };
   }
-  return { text: guarded.text, degraded, model, guardApproved: true, traceId };
+  return { text: guarded.text, degraded, generative, model, guardApproved: true, traceId };
 }
 
 // ---------------------------------------------------------------------------

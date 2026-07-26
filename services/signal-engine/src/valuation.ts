@@ -45,7 +45,15 @@ export function valuePortfolio(inputs: EngineInputs): ValuationResult {
       });
       continue;
     }
-    if (!pricesAsOf || price.asOf > pricesAsOf) pricesAsOf = price.asOf;
+    // The OLDEST contributing price, not the newest (P1-9).
+    //
+    // This value is rendered as an unqualified claim about the whole portfolio
+    // ("prices as of 25 Jul 2026"). Taking the maximum meant one six-month-stale
+    // position was invisible behind a fresh date, while still being folded into
+    // total value, weights, concentration and the Reality Check denominator.
+    // The minimum is the only reading that cannot overstate freshness: it is the
+    // date from which EVERY number here is at least as old.
+    if (!pricesAsOf || price.asOf < pricesAsOf) pricesAsOf = price.asOf;
     const valueLocal = dec(pos.quantity).times(price.close);
     rows.push({
       securityId: pos.securityId,

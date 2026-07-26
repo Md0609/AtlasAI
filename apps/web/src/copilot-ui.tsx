@@ -138,6 +138,31 @@ export function useCopilotSubject(type: CopilotContextType, ref: string | null, 
 // The global ⌘K panel — opens a context-bound thread and streams the answer.
 // ---------------------------------------------------------------------------
 
+/**
+ * Where a turn's words came from (P1-10).
+ *
+ * `degraded` and `generative` answer different questions and must not be
+ * collapsed into one label:
+ *
+ *   generative && !degraded   a model wrote it, normally      -> say nothing
+ *   !generative && degraded   the provider failed              -> say so
+ *   !generative && !degraded  fixture/demo or kept template    -> say so
+ *   generative && degraded    impossible by construction
+ *
+ * The healthy case is silent on purpose. A badge on every normal answer trains
+ * people to stop reading badges, and the one that matters would go with it.
+ */
+function Provenance({ degraded, generative }: { degraded: boolean; generative: boolean }) {
+  if (generative) return null;
+  return (
+    <div className="muted small">
+      {degraded
+        ? 'Written by Atlas, not by a model — the model was unavailable for this answer.'
+        : 'Written by Atlas from your own figures, not by a model.'}
+    </div>
+  );
+}
+
 function CommandK({ subject, onClose }: { subject: Subject; onClose: () => void }) {
   const [messages, setMessages] = useState<CopilotMessage[]>([]);
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -175,17 +200,47 @@ function CommandK({ subject, onClose }: { subject: Subject; onClose: () => void 
     setDraft('');
     setMessages((m) => [
       ...m,
-      { id: `u-${Date.now()}`, role: 'user', content: text, created_at: '' },
-      { id: `a-${Date.now()}`, role: 'assistant', content: '', created_at: '' },
+      {
+        id: `u-${Date.now()}`,
+        role: 'user',
+        content: text,
+        degraded: false,
+        generative: false, // the user wrote it
+        guard_approved: true,
+        created_at: '',
+      },
+      {
+        id: `a-${Date.now()}`,
+        role: 'assistant',
+        content: '',
+        // Optimistic placeholder. The real provenance arrives with `done`;
+        // until then claim nothing.
+        degraded: false,
+        generative: false,
+        guard_approved: true,
+        created_at: '',
+      },
     ]);
     setBusy(true);
     try {
-      await copilot.stream(threadId, text, (delta) => {
+      const done = await copilot.stream(threadId, text, (delta) => {
         setMessages((m) => {
           const next = [...m];
-          next[next.length - 1] = { ...next[next.length - 1], content: next[next.length - 1].content + delta };
+          next[next.length - 1] = { ...next[next.length - 1]!, content: next[next.length - 1]!.content + delta };
           return next;
         });
+      });
+      // Provenance is only known once the turn completes; without this the
+      // streamed answer keeps its optimistic placeholder values forever.
+      setMessages((m) => {
+        const next = [...m];
+        next[next.length - 1] = {
+          ...next[next.length - 1]!,
+          degraded: done.degraded,
+          generative: done.generative,
+          guard_approved: done.guard_approved,
+        };
+        return next;
       });
     } catch (e) {
       setError(String(e));
@@ -219,7 +274,12 @@ function CommandK({ subject, onClose }: { subject: Subject; onClose: () => void 
             <div key={m.id} className={`cmdk-msg ${m.role}`}>
               <div className="cmdk-role">{m.role === 'user' ? 'You' : 'Atlas'}</div>
               <div className="cmdk-content">{m.content || (busy ? '…' : '')}</div>
-              {m.guard_approved === false && <div className="muted small">(withheld — could not answer without advice)</div>}
+              {m.guard_approved === false && (
+                <div className="muted small">(withheld — could not answer without advice)</div>
+              )}
+              {m.role === 'assistant' && m.content && m.guard_approved !== false && (
+                <Provenance degraded={m.degraded} generative={m.generative} />
+              )}
               {/* FR-11.6 offers to keep a material CONCLUSION. The thread opens
                   with a canned greeting, which is not one — only answers that
                   followed a question of the user's are worth journaling. */}
