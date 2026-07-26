@@ -105,7 +105,39 @@ describe('with FX available', () => {
     const fxGaps = (res.gaps as Array<{ reason: string }>).filter((g) => /no FX path/.test(g.reason));
     expect(fxGaps).toEqual([]);
   });
+  it('reports the OLDEST contributing price, not the newest (P1-9)', async () => {
+    // The engine's half of P1-9 is covered by golden/staleness.test.ts. This is
+    // the API's half — a second, independent `pricesAsOf` fold in signals.ts —
+    // and a final mutation sweep found it uncovered: flipping `<` back to `>`
+    // left all 495 tests green.
+    //
+    // It lives in THIS block on purpose: the "FX missing" block below deletes
+    // the rates, and without FX the position is skipped before pricesAsOf is
+    // ever assigned, so the same assertions there would pass against null.
+    //
+    // The series walks every day in the window recording the bar date used, so
+    // the minimum is the first priced day and the maximum the last. Asserting
+    // it is not the maximum is what separates the two.
+    const res = await performance();
+    const asOf = res.staleness.prices_as_of as string | null;
+    expect(asOf).toBeTruthy();
+
+    const { rows } = await pool.query<{ lo: string; hi: string }>(
+      `SELECT min(bar_date)::text AS lo, max(bar_date)::text AS hi
+         FROM price_bars
+        WHERE security_id IN (
+          SELECT DISTINCT security_id FROM transactions
+           WHERE portfolio_id = $1 AND security_id IS NOT NULL)`,
+      [portfolioId],
+    );
+
+    expect(asOf! >= rows[0]!.lo).toBe(true);
+    expect(asOf! <= rows[0]!.hi).toBe(true);
+    // Strictly older than the newest — which is exactly what the max reported.
+    expect(asOf! < rows[0]!.hi).toBe(true);
+  });
 });
+
 
 describe('with FX missing', () => {
   let removed = 0;
