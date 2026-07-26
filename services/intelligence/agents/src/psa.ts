@@ -39,8 +39,24 @@ export interface PsaResult {
   egress: EgressResult;
   model: string;
   degraded: boolean;
+  /**
+   * false ⇒ no language model wrote this document (N-7).
+   *
+   * The third prose surface, and the one W2 missed: narration and the Copilot
+   * carry this, the PSA did not. It matters most here, because these documents
+   * are now PERSISTED for the v1.1 Scorecard — recording a fixture-written
+   * claim as model analysis would be a permanent error in the record the whole
+   * calibration rests on.
+   */
+  generative: boolean;
   /** §21.6: how many regenerations the Guard forced (0..2). */
   regenerations: number;
+  /**
+   * Which prompt produced this. Needed by the persisted record (P0-8): a
+   * recalibration has to know what it is recalibrating, and "the PSA" is not
+   * an answer once the prompt has been revised.
+   */
+  promptVersion: string;
 }
 
 export async function runPsa(
@@ -105,7 +121,13 @@ export async function runPsa(
     });
     return {
       approved: !isRejected(egress),
-      result: { doc, egress, model: result.model, degraded: result.degraded },
+      result: {
+        doc,
+        egress,
+        model: result.model,
+        degraded: result.degraded,
+        generative: result.generative,
+      },
       violations: isRejected(egress) ? egress.verdict.violations : [],
     };
   });
@@ -116,7 +138,9 @@ export async function runPsa(
       egress: gen.result.egress,
       model: gen.result.model,
       degraded: gen.result.degraded,
+      generative: gen.result.generative,
       regenerations: gen.regenerations,
+      promptVersion: prompt.version,
     };
   }
 
@@ -128,7 +152,17 @@ export async function runPsa(
     recordDecision,
     regenerated: gen.regenerations,
   });
-  return { doc: safe, egress: safeEgress, model: gen.result.model, degraded: true, regenerations: gen.regenerations };
+  // The safe doc is assembled from findings and signals by Atlas, not written
+  // by a model, whatever produced the rejected draft.
+  return {
+    doc: safe,
+    egress: safeEgress,
+    model: gen.result.model,
+    degraded: true,
+    generative: false,
+    regenerations: gen.regenerations,
+    promptVersion: prompt.version,
+  };
 }
 
 function buildTask(security: SecurityContext, findings: Finding[]): string {
