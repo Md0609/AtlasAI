@@ -14,7 +14,9 @@
     "@atlas/dataplane": "0.1.0",
     "@atlas/agents": "0.1.0",
     "@atlas/relevance": "0.1.0",
-    "@atlas/portfolio-core": "0.1.0"
+    "@atlas/portfolio-core": "0.1.0",
+    "@atlas/config": "0.1.0",
+    "@atlas/lifecycle": "0.1.0"
   },
   "devDependencies": {
     "@types/pg": "^8.11.10",

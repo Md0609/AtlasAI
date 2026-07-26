@@ -8,6 +8,7 @@ import cookie from '@fastify/cookie';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import type pg from 'pg';
+import { pendingMigrations } from '@atlas/schema';
 import { loadUser, registerAuthRoutes, tlsExpected } from './auth.js';
 import { registerBriefRoutes } from './briefs.js';
 import { registerContextualizeRoutes } from './contextualize.js';
@@ -33,6 +34,25 @@ export async function buildServer(
 ): Promise<FastifyInstance> {
   const app = Fastify({
     logger: loggerOptions(opts.logStream),
+    /**
+     * Let close() wait for in-flight requests (P0-6 / N-6).
+     *
+     * Measured on Fastify 5.10 with a 1.5s handler and a request in flight:
+     *
+     *   default (undefined) -> close 2ms,     request dies (UND_ERR_SOCKET)
+     *   'idle'              -> close 2ms,     request dies
+     *   false               -> close waits,   request completes with 200
+     *
+     * Both of the first two destroy a connection whose handler is still
+     * running: once the request body has been read, Fastify counts the socket
+     * as idle even though nobody has answered it yet.
+     *
+     * `false` is the only setting that finishes the response, and its cost is
+     * that idle keep-alive sockets also hold the close open — 71s in the same
+     * measurement. That is what the shutdown grace timeout bounds: requests
+     * finish, and stragglers stop mattering after ATLAS_SHUTDOWN_GRACE_MS.
+     */
+    forceCloseConnections: false,
     // The trace_id already returned in every problem+json (§31.5) is now the
     // same id pino stamps on the request, so a user quoting one can be looked up.
     genReqId: () => randomUUID(),
@@ -107,9 +127,49 @@ export async function buildServer(
     return problem(reply, req, status, 'request-error', (err as Error).message);
   });
 
+  /**
+   * Liveness: is this process able to answer at all? Deliberately shallow — a
+   * liveness probe that checks dependencies restarts the app when the database
+   * blinks, which turns a brief outage into a restart loop.
+   */
   app.get('/healthz', async (_req, reply) => {
-    await pool.query('SELECT 1');
     return reply.send({ ok: true });
+  });
+
+  /**
+   * Readiness: should this process receive traffic? Checks what would make its
+   * answers wrong rather than merely slow.
+   *
+   * The migration check is here because of N-4, which was observed rather than
+   * theorised: the database ran two migrations behind and every Copilot call
+   * returned 500 until someone ran the CLI by hand. A process serving traffic
+   * against a schema it does not expect is a subtler outage than one that
+   * declines to report ready.
+   */
+  app.get('/readyz', async (_req, reply) => {
+    const checks: Record<string, string> = {};
+    let ready = true;
+
+    try {
+      await pool.query('SELECT 1');
+      checks.database = 'ok';
+    } catch (err) {
+      checks.database = `unreachable: ${String(err)}`;
+      ready = false;
+    }
+
+    if (ready) {
+      try {
+        const pending = await pendingMigrations(pool);
+        checks.migrations = pending.length === 0 ? 'ok' : `${pending.length} pending: ${pending.join(', ')}`;
+        if (pending.length > 0) ready = false;
+      } catch (err) {
+        checks.migrations = `unknown: ${String(err)}`;
+        ready = false;
+      }
+    }
+
+    return reply.status(ready ? 200 : 503).send({ ready, checks });
   });
 
   registerAuthRoutes(app, pool);

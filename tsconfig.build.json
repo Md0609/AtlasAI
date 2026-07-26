@@ -5,6 +5,9 @@
       "path": "packages/config"
     },
     {
+      "path": "packages/lifecycle"
+    },
+    {
       "path": "packages/contracts"
     },
     {

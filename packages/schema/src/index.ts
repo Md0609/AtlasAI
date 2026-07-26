@@ -54,11 +54,23 @@ export interface MigrationResult {
   skipped: string[];
 }
 
+/**
+ * A fixed key for the migration advisory lock. Any constant works; it only has
+ * to be the same in every process.
+ */
+const MIGRATION_LOCK_KEY = 4_317_002_001;
+
 export async function migrate(pool: pg.Pool): Promise<MigrationResult> {
   const client = await pool.connect();
   const applied: string[] = [];
   const skipped: string[] = [];
   try {
+    // Serialise migrations across processes (P1-15). This became a requirement
+    // rather than a nicety when the API started migrating on boot: two
+    // instances starting together would otherwise read the same pending set and
+    // race on the same DDL. The lock is session-scoped and released in the
+    // finally below, including on failure.
+    await client.query('SELECT pg_advisory_lock($1)', [MIGRATION_LOCK_KEY]);
     await client.query(`
       CREATE TABLE IF NOT EXISTS schema_migrations (
         name text PRIMARY KEY,
@@ -90,8 +102,26 @@ export async function migrate(pool: pg.Pool): Promise<MigrationResult> {
     }
     return { applied, skipped };
   } finally {
+    // The lock dies with the session anyway, but releasing it explicitly frees
+    // the next process immediately instead of at pool recycle. A failure here
+    // must not mask an error already propagating.
+    await client.query('SELECT pg_advisory_unlock($1)', [MIGRATION_LOCK_KEY]).catch(() => {});
     client.release();
   }
+}
+
+/**
+ * Migration files that have not been applied. Used by the readiness probe: a
+ * process serving traffic against a schema it does not expect is a subtler
+ * outage than one that refuses to report ready.
+ */
+export async function pendingMigrations(pool: pg.Pool): Promise<string[]> {
+  const files = readdirSync(MIGRATIONS_DIR)
+    .filter((f) => f.endsWith('.sql'))
+    .sort();
+  const { rows } = await pool.query<{ name: string }>('SELECT name FROM schema_migrations');
+  const applied = new Set(rows.map((r) => r.name));
+  return files.filter((f) => !applied.has(f));
 }
 
 /** Drop and recreate the public schema — test databases only. */
