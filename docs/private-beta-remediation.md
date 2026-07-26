@@ -70,7 +70,7 @@ Ordered by dependency, not by severity. The rationale for each wave is in its he
 | **W0** | P0-2 | **DONE** — nothing below was verifiable until the gate read source |
 | **W1** | P0-1, P1-13, P1-2 | **DONE** — config correctness; a wrong deploy must refuse to boot |
 | **W2** | P0-3, P0-4, P1-9, P1-10, P1-11 | **DONE** — the silent-degradation set |
-| **W3** | P0-5, P0-6, P0-7 | Operational floor; makes the product runnable at all |
+| **W3** | P0-5, P0-6, P0-7 | **Group A DONE**; Group B blocked on the platform decision |
 | **W4** | P0-8 | Time-sensitive: every beta day without it is ungradeable forever |
 | **W5** | P1-1, P1-3, P2-21 | Close the remaining test gaps (P1-2 done in W1) |
 | **W6** | P1-4, P1-5, P1-6, P1-7, P1-8, P2-1 | Correctness and performance on the write/read paths |
@@ -797,6 +797,148 @@ Tests added: 18 (4 cost basis, 5 FX, 5 staleness, 4 boundary)
 
 - **P1-16** (`trustProxy`) — deployment decision.
 - **FR-12.1** — §56 Q-01.
+
+
+---
+
+# W3 — GROUP A COMPLETED 2026-07-26
+
+Split as instructed: everything independent of the deployment target shipped;
+the rest is listed below with the exact missing input.
+
+## P0-6 · Shutdown and crash handling
+
+Reproduced against a real listening server:
+
+| Scenario | Before |
+|---|---|
+| SIGTERM during a 3s request | `curl exit=52 http=000` — severed mid-response |
+| `Promise.reject(new Error())` | `exit=1` before a 500ms timer could fire |
+
+Zero `process.on` handlers existed. The API never called `app.close()` or
+`pool.end()`; the worker's `finally` was unreachable because its loop never
+exited.
+
+New `@atlas/lifecycle`: ordered shutdown (stop accepting, THEN close the pool —
+reversing it is what cuts requests off at the database), failure isolation
+between steps, immediate exit on a second signal, and a grace timeout so a hung
+shutdown does not hand the moment of death to a SIGKILL. Crash handlers drain
+and exit non-zero with the cause logged.
+
+### N-6 · Fastify's `close()` does not drain by default
+
+**Discovered while implementing, and the reason this took two attempts.** With
+handlers installed the request STILL died. Measured on Fastify 5.10 with a
+request in flight:
+
+| `forceCloseConnections` | `close()` | Request |
+|---|---|---|
+| default | 2 ms | **dies** (`UND_ERR_SOCKET`) |
+| `'idle'` | 2 ms | **dies** |
+| `false` | waits | **completes (200)** |
+
+Once the body has been read, Fastify counts the socket as idle even though
+nobody has answered it. `false` is the only setting that finishes the response;
+its cost is that idle keep-alive sockets also hold the close open — 71 s in the
+same measurement — which is precisely what the grace timeout bounds.
+
+**After:** the same experiment returns `{"ok":true} curl exit=0 http=200`.
+
+## P0-5 · The worker runs, and runs its schedule
+
+`npm run workers` was `drain`. Worse, `scheduleWeeklyReviews` was called from
+**nothing but tests** — no user would ever have received a Weekly Review, and
+the 30-day erasure jobs the API issues signed certificates for would have sat in
+the queue indefinitely.
+
+`watch` is now the deployed mode, with a due-work sweep on an interval.
+In-process rather than external cron: no infrastructure decision required, it
+stops when the worker stops, and a missed sweep self-corrects because the check
+is "is this due?" not "did the timer fire?".
+
+## N-4 closed · Migrate before start
+
+The API migrates before listening (advisory-locked, so instances booting
+together serialise rather than race), or refuses to start when
+`ATLAS_MIGRATE_ON_START` is off and the schema is behind. The worker checks and
+refuses rather than racing the API to migrate. `/readyz` returns 503 with the
+pending list; `/healthz` stays shallow, because a liveness probe that checks
+dependencies turns a brief outage into a restart loop.
+
+**P1-15's advisory lock landed here** rather than later: migrate-on-start makes
+concurrent migration real, so it stopped being optional.
+
+## P0-7, platform-neutral third · Restore is rehearsed
+
+`ops/backup-restore.sh` dumps, restores into a scratch database, and compares
+migration count plus row counts for the six tables holding what a user cannot
+re-enter.
+
+The first rehearsal was worthless — against `atlas_test` every table had 0 rows,
+and comparing zero to zero proves nothing. Re-run against the development
+database: **12 users, 11 portfolios, 23 transactions, 1 thesis, 1 decision, 2
+rules**, all recovered and matched at migration 022.
+
+## Evidence
+
+```
+Build:      clean (tsc -b, 20 workspaces + apps/web)
+Typecheck:  clean (production + tests)
+Suite:      487 passed / 54 files   (466 / 51 at the end of W2)
+Tests added: 21 (12 lifecycle, 6 server drain + readiness, 3 worker process)
+```
+
+Causality verified for both: reverting `forceCloseConnections` kills the drain
+test; reverting the loop to `while (true)` leaves the worker killed by signal
+instead of exiting 0.
+
+---
+
+## W3 — GROUP B: blocked on the platform decision
+
+Not "waiting for a preference" — each needs a fact that only the deployment
+target supplies.
+
+### B-1 · Process definition (Dockerfile / compose / Procfile / unit file)
+
+**Missing input:** what supervises the processes. The file's *format* is
+determined by the answer (a Dockerfile and a systemd unit share no syntax), as
+is how the API and worker are declared as separate process types, and what
+restart policy exists.
+
+**Neutralised meanwhile:** the *ordering* it would encode is now enforced in
+code — the API migrates before listening and both processes refuse to start
+against a stale schema — so a wrong or missing process definition can no longer
+produce the N-4 failure silently.
+
+### B-2 · `trustProxy` CIDR (P1-16)
+
+**Missing input:** the proxy's address range. Cannot be guessed, and `true` is
+worse than the current state: it lets any client forge `X-Forwarded-For` and
+evade the rate limit entirely. Documented in `.env.example` beside the limits it
+affects.
+
+### B-3 · Serving `apps/web/dist`
+
+**Missing input:** whether the SPA is served by this API (`@fastify/static`), by
+a CDN, or by the platform's own static hosting. Registering static serving would
+be wrong for two of the three.
+
+### B-4 · Scheduled ingest
+
+**Missing input:** where a daily EOD job runs. Unlike the weekly-review sweep,
+this would make `@atlas/workers` depend on `@atlas/ingest` — a new dependency
+direction — and its cadence follows a market calendar rather than an interval.
+
+### B-5 · CI
+
+**Missing input:** the CI provider. Also excluded by instruction until now. The
+job itself is one line: `npm ci && npm run build && npm test`.
+
+### B-6 · Where backups go
+
+The script exists and is rehearsed. Retention, destination and schedule are
+deployment decisions.
 
 ## 12. Effort
 

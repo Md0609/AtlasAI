@@ -35,6 +35,12 @@
     },
     {
       "path": "../../packages/portfolio-core"
+    },
+    {
+      "path": "../../packages/config"
+    },
+    {
+      "path": "../../packages/lifecycle"
     }
   ]
 }
