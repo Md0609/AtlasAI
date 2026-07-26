@@ -58,8 +58,23 @@ export interface CopilotMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  degraded?: boolean;
-  guard_approved?: boolean;
+  /**
+   * Two independent facts about where this text came from (P1-10/P1-11).
+   *
+   *   degraded    the real provider fell back to the deterministic template
+   *   generative  a language model wrote these words
+   *
+   * They are NOT the same question, and the case that matters is where they
+   * disagree: the fixture provider reports degraded: false — returning the
+   * template IS its answer — and is still not analysis.
+   *
+   * Both are non-optional. Marking them optional is what let a guard-refused
+   * opener render as a normal answer: `guard_approved === false` is false for
+   * `undefined`, so the withheld treatment never fired.
+   */
+  degraded: boolean;
+  generative: boolean;
+  guard_approved: boolean;
   created_at: string;
 }
 
@@ -112,7 +127,7 @@ export const copilot = {
     threadId: string,
     message: string,
     onDelta: (text: string) => void,
-  ): Promise<{ id: string; degraded: boolean; guard_approved: boolean }> {
+  ): Promise<{ id: string; degraded: boolean; generative: boolean; guard_approved: boolean }> {
     const res = await fetch(`/v1/copilot/threads/${threadId}/stream`, {
       method: 'POST',
       credentials: 'include',
@@ -128,7 +143,7 @@ export const copilot = {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
-    let done = { id: '', degraded: false, guard_approved: true };
+    let done = { id: '', degraded: false, generative: false, guard_approved: true };
     for (;;) {
       const { value, done: finished } = await reader.read();
       if (finished) break;
@@ -276,7 +291,13 @@ export interface RealityCheckResponse {
   };
   warnings: string[];
   gaps: Array<{ component: string; reason: string }>;
-  provenance: { engineVersion: string; inputHash: string; methodology: string };
+  provenance: {
+    engineVersion: string;
+    inputHash: string;
+    methodology: string;
+    /** Present on the Reality Check: how its prose was produced (P1-10). */
+    narration?: { traceId: string; model: string; degraded: boolean; generative: boolean };
+  };
   staleness: { prices_as_of: string | null; fx_as_of: string | null; holdings_as_of: string | null };
 }
 
@@ -401,5 +422,16 @@ export interface PerformanceResponse {
     currency_decomposition?: Array<{ currency: string; localReturn: string | null; fxReturn: string | null }>;
   } | null;
   gaps: Array<{ component: string; reason: string }>;
-  staleness: { prices_as_of: string | null };
+  // The API sends all three; the type declared one, so Performance rendered
+  // with no as-of date and no provenance while every other surface had both.
+  provenance: {
+    engineVersion: string;
+    inputHash: string;
+    methodology: string;
+  };
+  staleness: {
+    prices_as_of: string | null;
+    fx_as_of: string | null;
+    holdings_as_of: string | null;
+  };
 }

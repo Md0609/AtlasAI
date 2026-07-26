@@ -64,11 +64,18 @@ async function insertMessage(
   userId: string,
   role: 'user' | 'assistant',
   content: string,
-  meta?: { model: string; traceId: string; degraded: boolean; guardApproved: boolean },
+  meta?: {
+    model: string;
+    traceId: string;
+    degraded: boolean;
+    generative: boolean;
+    guardApproved: boolean;
+  },
 ): Promise<{ id: string; created_at: string }> {
   const { rows } = await db.query(
-    `INSERT INTO copilot_messages (thread_id, user_id, role, content, model, trace_id, degraded, guard_approved)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, created_at`,
+    `INSERT INTO copilot_messages
+       (thread_id, user_id, role, content, model, trace_id, degraded, generative, guard_approved)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, created_at`,
     [
       threadId,
       userId,
@@ -77,6 +84,10 @@ async function insertMessage(
       meta?.model ?? null,
       meta?.traceId ?? null,
       meta?.degraded ?? false,
+      // A user's own message is not model-written either, and neither is a turn
+      // with no metadata. Defaulting to false claims less, which is the safe
+      // direction for a provenance flag.
+      meta?.generative ?? false,
       meta?.guardApproved ?? true,
     ],
   );
@@ -125,7 +136,7 @@ export function registerCopilotRoutes(app: FastifyInstance, pool: pg.Pool): void
     const thread = await ownedThread(pool, user.id, id);
     if (!thread) return problem(reply, req, 404, 'not-found', 'Thread not found');
     const { rows: messages } = await pool.query(
-      `SELECT id, role, content, model, degraded, guard_approved, created_at
+      `SELECT id, role, content, model, degraded, generative, guard_approved, created_at
          FROM copilot_messages WHERE thread_id = $1 ORDER BY created_at, id`,
       [id],
     );
@@ -172,13 +183,27 @@ export function registerCopilotRoutes(app: FastifyInstance, pool: pg.Pool): void
       model: opener.model,
       traceId: opener.traceId,
       degraded: opener.degraded,
+      generative: opener.generative,
       guardApproved: opener.guardApproved,
     });
 
     return reply.status(201).send({
       data: {
         thread,
-        messages: [{ id: msg.id, role: 'assistant', content: opener.text, created_at: msg.created_at }],
+        messages: [
+          {
+            id: msg.id,
+            role: 'assistant',
+            content: opener.text,
+            // Omitting these was P1-11: the SPA marks them optional, and its
+            // `guard_approved === false` test is false for `undefined`, so a
+            // guard-refused opener rendered as if Atlas had answered.
+            degraded: opener.degraded,
+            generative: opener.generative,
+            guard_approved: opener.guardApproved,
+            created_at: msg.created_at,
+          },
+        ],
       },
     });
   });
@@ -211,6 +236,7 @@ export function registerCopilotRoutes(app: FastifyInstance, pool: pg.Pool): void
       model: answer.model,
       traceId: answer.traceId,
       degraded: answer.degraded,
+      generative: answer.generative,
       guardApproved: answer.guardApproved,
     });
     if (answer.guardApproved) await rememberTurn(pool, user.id, thread, parsed.data.message, answer.text);
@@ -221,6 +247,7 @@ export function registerCopilotRoutes(app: FastifyInstance, pool: pg.Pool): void
         role: 'assistant',
         content: answer.text,
         degraded: answer.degraded,
+        generative: answer.generative,
         guard_approved: answer.guardApproved,
         created_at: msg.created_at,
       },
@@ -256,6 +283,7 @@ export function registerCopilotRoutes(app: FastifyInstance, pool: pg.Pool): void
       model: answer.model,
       traceId: answer.traceId,
       degraded: answer.degraded,
+      generative: answer.generative,
       guardApproved: answer.guardApproved,
     });
     if (answer.guardApproved) await rememberTurn(pool, user.id, thread, parsed.data.message, answer.text);
@@ -312,6 +340,7 @@ export function registerCopilotRoutes(app: FastifyInstance, pool: pg.Pool): void
       send('done', {
         id: msg.id,
         degraded: answer.degraded,
+        generative: answer.generative,
         guard_approved: answer.guardApproved,
         created_at: msg.created_at,
       });

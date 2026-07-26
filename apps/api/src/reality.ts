@@ -98,6 +98,10 @@ export function registerRealityRoutes(app: FastifyInstance, pool: pg.Pool): void
     // narrate() rejects any narration that introduces or alters a figure.
     const traceId = newTraceId();
     let narrationDegraded = false;
+    // Starts false and only becomes true if a model actually wrote a body that
+    // survived the numeral check. The template path — which is every path when
+    // the fixture provider is active — is not analysis.
+    let narrationGenerative = false;
     let narrationModel = 'template';
     const narratedTop: Surprise[] = await Promise.all(
       result.top.map(async (s) => {
@@ -111,6 +115,7 @@ export function registerRealityRoutes(app: FastifyInstance, pool: pg.Pool): void
           });
           narrationModel = n.model;
           if (n.degraded) narrationDegraded = true;
+          if (n.generative) narrationGenerative = true;
           return { ...s, body: n.text };
         } catch {
           narrationDegraded = true; // never let narration break the deterministic result
@@ -147,6 +152,9 @@ export function registerRealityRoutes(app: FastifyInstance, pool: pg.Pool): void
           // Every figure remains engine-computed; the model only rephrases, and
           // any narration that drifts on a number degrades to the template.
           degraded: narrationDegraded,
+          // Whether a model wrote any of this prose at all. Independent of
+          // `degraded`: the fixture is not degraded and is not generative.
+          generative: narrationGenerative,
         },
       },
       staleness: {

@@ -29,6 +29,7 @@ const pctNum = (w: string) => formatPct(w, 1);
  * outcome, including the ones with nothing to report.
  */
 function Caveats({ resp }: { resp: RealityCheckResponse }) {
+  const narration = resp.provenance.narration;
   return (
     <>
       {resp.warnings.map((w, i) => (
@@ -37,6 +38,18 @@ function Caveats({ resp }: { resp: RealityCheckResponse }) {
       {resp.gaps.map((g, i) => (
         <div key={`g-${i}`} className="gaps">⚠ {g.reason}</div>
       ))}
+      {/* P1-10: the surprise bodies are narrated prose. Whether a model wrote
+          them is a separate fact from whether the numbers are sound — every
+          figure is engine-computed either way — and the user is entitled to
+          both. Silent on the healthy path, for the reason given in
+          copilot-ui's Provenance. */}
+      {narration && !narration.generative && (
+        <div className="muted small">
+          {narration.degraded
+            ? 'These observations are Atlas\u2019s own wording — the model was unavailable.'
+            : 'These observations are Atlas\u2019s own wording, not a model\u2019s.'}
+        </div>
+      )}
       <p className="provenance">
         engine {resp.provenance.engineVersion} · {resp.provenance.methodology} · inputs{' '}
         {resp.provenance.inputHash.slice(0, 12)}… · prices as of{' '}

@@ -46,6 +46,20 @@ export interface NarrateResult {
   text: string;
   /** true ⇒ the template was used (provider degraded, numeral drift, or guard rejection). */
   degraded: boolean;
+  /**
+   * false ⇒ no language model wrote this text.
+   *
+   * Distinct from `degraded`, and the two must not be conflated. `degraded`
+   * says a real provider fell back; `generative` says whether a model wrote
+   * the words at all. The fixture provider is not degraded — returning the
+   * deterministic draft IS its answer — and is still not analysis.
+   *
+   *   generative && !degraded   model wrote it, normally
+   *   !generative && degraded   provider failed; this is the template
+   *   !generative && !degraded  fixture/demo, or the template kept by choice
+   *   generative && degraded    impossible: a degradation returns the template
+   */
+  generative: boolean;
   model: string;
   guard: GuardVerdict;
 }
@@ -114,7 +128,22 @@ export async function narrate(db: Db, input: NarrateInput): Promise<NarrateResul
   if (!guarded.approved) {
     // Guard rejected the narration — keep the template (already provenanced &
     // guard-clean). The rejection is recorded in guard_decisions above.
-    return { text: input.template, degraded: true, model: result.model, guard: guarded.verdict };
+    return {
+      text: input.template,
+      degraded: true,
+      generative: false, // the template, by definition
+      model: result.model,
+      guard: guarded.verdict,
+    };
   }
-  return { text: guarded.text, degraded: degradedBefore, model: result.model, guard: guarded.verdict };
+  return {
+    text: guarded.text,
+    degraded: degradedBefore,
+    // Only model-written prose that survived the numeral check is generative.
+    // Falling back to the template — for drift or for a provider failure —
+    // means no model wrote what the user will read.
+    generative: result.generative && !degradedBefore,
+    model: result.model,
+    guard: guarded.verdict,
+  };
 }

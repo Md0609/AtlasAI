@@ -132,3 +132,98 @@ describe('the API preserves the degraded flag', () => {
     expect(rows[0].guard_approved).toBe(true);
   });
 });
+
+describe('provenance survives every layer boundary', () => {
+  /**
+   * provider -> runtime -> agents -> egress -> API -> SPA.
+   *
+   * `generative` was introduced at the provider in W1 and died at agents: the
+   * agent result types carried `degraded` only, so by the time anything reached
+   * the API the fact that no model had written the words was gone. These pin
+   * the whole chain rather than any one hop.
+   */
+  it('reports generative: false for a fixture-backed turn that is NOT degraded', async () => {
+    // The exact combination that made P0-1 invisible. The fixture is healthy —
+    // returning the deterministic draft IS its answer — so `degraded` is
+    // correctly false, and `generative` is the only field that dissents.
+    setProviderForTests(null); // the suite's default provider is the fixture
+    const thread = await app.inject({
+      method: 'POST',
+      url: '/v1/copilot/threads',
+      payload: { context_type: 'global' } as never,
+      headers: { 'content-type': 'application/json', cookie },
+    });
+    const opener = thread.json().data.messages[0];
+
+    // The 201 payload used to omit both fields entirely (P1-11).
+    expect(opener).toHaveProperty('degraded');
+    expect(opener).toHaveProperty('generative');
+    expect(opener).toHaveProperty('guard_approved');
+    expect(opener.degraded).toBe(false);
+    expect(opener.generative).toBe(false);
+  });
+
+  it('persists generative, so a reload cannot contradict the live response', async () => {
+    const thread = await app.inject({
+      method: 'POST',
+      url: '/v1/copilot/threads',
+      payload: { context_type: 'global' } as never,
+      headers: { 'content-type': 'application/json', cookie },
+    });
+    const threadId = thread.json().data.thread.id;
+    const live = thread.json().data.messages[0];
+
+    const reload = await app.inject({
+      method: 'GET',
+      url: `/v1/copilot/threads/${threadId}`,
+      headers: { cookie },
+    });
+    const stored = reload.json().data.messages[0];
+    expect(stored.generative).toBe(live.generative);
+    expect(stored.degraded).toBe(live.degraded);
+  });
+
+  it('keeps degraded and generative independent — a degradation is not the fixture', async () => {
+    setProviderForTests(new AlwaysDegradedProvider());
+    try {
+      const thread = await app.inject({
+        method: 'POST',
+        url: '/v1/copilot/threads',
+        payload: { context_type: 'global' } as never,
+        headers: { 'content-type': 'application/json', cookie },
+      });
+      const res = await app.inject({
+        method: 'POST',
+        url: `/v1/copilot/threads/${thread.json().data.thread.id}/messages`,
+        payload: { message: 'Anything' } as never,
+        headers: { 'content-type': 'application/json', cookie },
+      });
+      const turn = res.json().data;
+      // Provider failed AND no model wrote it: both true, for different reasons.
+      expect(turn.degraded).toBe(true);
+      expect(turn.generative).toBe(false);
+    } finally {
+      setProviderForTests(null);
+    }
+  });
+
+  it('carries narration provenance on the Reality Check too', async () => {
+    // The other surface that renders model-written prose. Same two fields, so
+    // the SPA can use one rule everywhere.
+    const p = await app.inject({
+      method: 'POST',
+      url: '/v1/portfolios',
+      payload: { name: 'Prov', type: 'taxable', base_currency: 'EUR' } as never,
+      headers: { 'content-type': 'application/json', cookie },
+    });
+    const rc = await app.inject({
+      method: 'GET',
+      url: `/v1/portfolios/${p.json().id}/reality-check`,
+      headers: { cookie },
+    });
+    expect(rc.statusCode).toBe(200);
+    const narration = rc.json().provenance.narration;
+    expect(narration).toHaveProperty('degraded');
+    expect(narration).toHaveProperty('generative');
+  });
+});
