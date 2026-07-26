@@ -7,6 +7,13 @@
  *
  * Provider-agnostic: whichever LLM backs the runtime (fixture in dev/test,
  * Anthropic in prod) produces the same envelope.
+ *
+ * Every successful contextualization is PERSISTED before it is returned (P0-8).
+ * §51.4: "the data model and the event capture ship at MVP, because
+ * retrofitting them would mean the first 12 months of claims are ungradeable
+ * forever." The v1.1 Scorecard (F-34) is a nightly job over that table; without
+ * the rows there is nothing to grade and no way to recover them. This is
+ * capture only — the grader is not built here.
  */
 import type { FastifyInstance } from 'fastify';
 import type pg from 'pg';
@@ -64,6 +71,49 @@ export function registerContextualizeRoutes(app: FastifyInstance, pool: pg.Pool)
     const gaps = result.findings
       .filter((f) => f.confidence === 'insufficient' || f.kind.endsWith('.gap'))
       .map((f) => ({ component: f.agent, reason: f.statement }));
+
+    /**
+     * Record before responding, and let a failure here fail the request.
+     *
+     * The alternative — persist best-effort and answer anyway — would silently
+     * produce exactly the state §51.4 warns about: claims shown to users that
+     * were never recorded, discovered a year later when the Scorecard has
+     * nothing to grade. A user seeing an error is recoverable; an ungradeable
+     * year is not.
+     */
+    await pool.query(
+      `INSERT INTO contextualizations (
+         user_id, security_id, doc, rendered_text,
+         confidence_level, what_would_change_it, gaps,
+         guard_verdict, guard_ruleset_version, guard_classifier_version,
+         generator_agent, generator_prompt_version, generator_model,
+         generative, degraded, output_hash, trace_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+      [
+        user.id,
+        parsed.data.security_id,
+        JSON.stringify(doc),
+        // What the user actually read. Not always the doc: egress may have
+        // substituted the safe fallback (FR-12.4 — reconstruct any OUTPUT
+        // SHOWN, not merely the output generated).
+        ufc.text,
+        doc.confidence.level,
+        JSON.stringify(doc.confidence.whatWouldChangeIt),
+        JSON.stringify(gaps),
+        ufc.guard.approved ? 'approved' : 'rejected',
+        ufc.guard.rulesetVersion,
+        ufc.guard.classifierVersion,
+        'psa',
+        result.psa.promptVersion,
+        result.psa.model,
+        result.psa.generative,
+        result.psa.degraded,
+        // The egress module's own hash of what it emitted: the cheapest way to
+        // prove a stored row matches what was shown (FR-12.4).
+        ufc.outputHash,
+        result.traceId,
+      ],
+    );
 
     return reply.send({
       data: {

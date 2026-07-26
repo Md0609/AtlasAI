@@ -67,6 +67,31 @@ const PSEUDONYMIZE: Array<[string, string]> = [
   ['agent_messages', `UPDATE agent_messages SET user_id = NULL, output = jsonb_build_object('pseudonymized', true) WHERE user_id = $1`],
   ['guard_decisions', `UPDATE guard_decisions SET user_id = NULL WHERE user_id = $1`],
   ['events', `UPDATE events SET payload = jsonb_build_object('pseudonymized', true) WHERE partition_key = $1`],
+  /**
+   * Contextualizations (P0-8) are split deliberately.
+   *
+   * The row is RETAINED because it is a record of what Atlas claimed, and the
+   * v1.1 Scorecard calibrates on declared confidence — an aggregate that needs
+   * no identity. What is REMOVED is everything describing this user's
+   * portfolio: `doc`, `rendered_text` and the falsifier set all contain their
+   * holdings and weights.
+   *
+   * The cost is stated rather than hidden: without the falsifiers these rows
+   * can no longer be graded for correctness. They still count toward "how many
+   * high-confidence claims were made", not toward "were they right". Keeping a
+   * summary of an erased user's portfolio to improve our own metrics is not a
+   * legitimate Art. 17(3)(b) exception, and pretending otherwise to preserve a
+   * calibration sample would be exactly the trade this product refuses.
+   */
+  [
+    'contextualizations',
+    `UPDATE contextualizations
+        SET user_id = NULL,
+            doc = jsonb_build_object('pseudonymized', true),
+            rendered_text = '[pseudonymized]',
+            what_would_change_it = jsonb_build_object('pseudonymized', true)
+      WHERE user_id = $1`,
+  ],
 ];
 
 export async function eraseUser(
