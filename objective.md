@@ -51,8 +51,8 @@ crudos y tiene que sacar él solo las conclusiones.
 | AT-1 | Trocear la web | `apps/web/src/features/{auth,portfolios,summary,positions,exposure,performance,import}/` + `components/`; cero cambio visual; tests de render con Testing Library (dependencia justificada) | ⬜ |
 | AT-2 | Sistema visual | Tokens claro/oscuro, `Button`, `Badge`, `EmptyState`, `Spinner`, `Toast`, `ThemeToggle` (ver §4); formateadores únicos de dinero, % y fechas | ⬜ |
 | AT-3 | Pestaña **Resumen** | 4 KPI (valor total, rentabilidad del periodo, mayor posición %, % desconocido) + 1–2 frases generadas **de forma determinista** desde la respuesta del motor (sin LLM) | ⬜ |
-| AT-4 | Exposición visual | Barras horizontales ordenadas (top 8 + "Otros"); "Desconocido" siempre aparte y con su propio estilo; tabla plegable | ⬜ |
-| AT-5 | Rendimiento visual | Evolución en el tiempo + descomposición local vs divisa; TWR y MWR explicados en una línea cada uno | ⬜ |
+| AT-4 | Exposición visual | Barras horizontales ordenadas (top 8 + "Otros"); "Desconocido" siempre aparte y con su propio estilo; tabla plegable. "Otros" se suma con aritmética decimal (`@atlas/domain`), nunca con `Number` (ver §6) | ⬜ |
+| AT-5 | Rendimiento visual | Con lo que la API ya devuelve (`PerformanceResponse`): TWR, MWR, drawdown máximo y actual y descomposición local vs divisa en gráfico; TWR y MWR explicados en una línea cada uno. **Sin serie temporal** (la API no la ofrece, ver §5) | ⬜ |
 | AT-6 | Importar CSV en 3 pasos | Subir → mapear (vista previa de 5 filas, columnas detectadas) → confirmar con errores por fila; volver atrás sin perder el mapeo | ⬜ |
 | AT-7 | Estados y errores | Vacío/carga/error en todas las vistas; errores con título humano y `trace_id` copiable | ⬜ |
 | AT-8 | Accesibilidad y móvil | Pestañas ARIA, foco visible, navegación con teclado, 360 px, contraste AA | ⬜ |
@@ -81,12 +81,13 @@ crudos y tiene que sacar él solo las conclusiones.
 
 ## 5. 🚫 Fuera de alcance ahora
 
-Nuevas métricas del motor, proveedores de datos reales, Fase 2 del blueprint, app móvil,
+Nuevas métricas del motor (incluida una serie temporal de valor/rentabilidad para un gráfico de
+evolución: exige ampliar motor y API, y es decisión del autor), proveedores de datos reales, Fase 2 del blueprint, app móvil,
 internacionalización (se mantiene el idioma actual de la interfaz), cualquier LLM en la web.
 
 ## 6. 🔒 Reglas que no se negocian
 
-- **El cliente no calcula métricas**: muestra lo que da la API (cadenas decimales). Formatear sí, recalcular no.
+- **El cliente no calcula métricas**: muestra lo que da la API (cadenas decimales). Formatear sí, recalcular no. La única excepción es **agrupar para presentación** (p. ej. sumar los pesos de "Otros"), siempre con aritmética decimal y nunca con `Number`/coma flotante.
 - La porción desconocida **nunca** se redistribuye ni se oculta.
 - La procedencia sigue accesible desde cada cifra.
 - Los tests dorados del motor no se tocan para "hacer pasar" un cambio de UI.
