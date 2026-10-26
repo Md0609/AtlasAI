@@ -19,6 +19,9 @@ import { audit, requireUser } from './auth.js';
 import { parseCsv, problem } from './http.js';
 
 const MAX_PORTFOLIOS = 3;
+// Data rows per CSV import request (header excluded). Larger files are
+// rejected whole with a 400 — split them and import in batches.
+export const MAX_IMPORT_ROWS = 5000;
 
 const portfolioSchema = z.object({
   name: z.string().min(1).max(120),
@@ -162,10 +165,17 @@ function txAmount(input: z.infer<typeof transactionSchema>): string | null {
   return null;
 }
 
+/**
+ * Writes one transaction and refreshes the derived state. Callers writing
+ * many rows in one DB transaction pass `{ recompute: false }` and call
+ * recomputeDerivedState once at the end: the fold reads the whole ledger,
+ * so recomputing per row makes a bulk write quadratic.
+ */
 async function insertTransaction(
   client: pg.PoolClient,
   portfolioId: string,
   input: z.infer<typeof transactionSchema>,
+  { recompute = true }: { recompute?: boolean } = {},
 ): Promise<string> {
   const amount = txAmount(input);
   if (amount === null) {
@@ -187,7 +197,7 @@ async function insertTransaction(
       input.note ?? null,
     ],
   );
-  await recomputeDerivedState(client, portfolioId);
+  if (recompute) await recomputeDerivedState(client, portfolioId);
   return rows[0].id as string;
 }
 
@@ -404,6 +414,16 @@ export function registerPortfolioRoutes(app: FastifyInstance, pool: pg.Pool): vo
     if (rows.length < 2) {
       return problem(reply, req, 400, 'validation', 'CSV needs a header row and at least one data row');
     }
+    if (rows.length - 1 > MAX_IMPORT_ROWS) {
+      return problem(
+        reply,
+        req,
+        400,
+        'validation',
+        `CSV import is capped at ${MAX_IMPORT_ROWS} rows per request`,
+        'Split the file and import in batches.',
+      );
+    }
     const header = rows[0]!.map((h) => h.trim());
     const col = (name?: string) => (name ? header.indexOf(name) : -1);
     const cols = {
@@ -487,9 +507,10 @@ export function registerPortfolioRoutes(app: FastifyInstance, pool: pg.Pool): vo
           price,
           currency,
           fee,
-        });
+        }, { recompute: false });
         imported += 1;
       }
+      if (imported > 0) await recomputeDerivedState(client, id);
       await audit(client, user.id, 'portfolio.import_csv', 'portfolio', id, req.traceId, {
         imported,
         skipped: skipped.length,
