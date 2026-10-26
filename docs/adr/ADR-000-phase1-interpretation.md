@@ -57,6 +57,10 @@ Phase 1 structurally requires.
 4. **CSV import transport**: JSON `{csv, mapping, defaults}` instead of §31.2
    multipart. Multipart + screenshot import lane arrive with the full import
    pipeline; mapping semantics are identical. Documented deviation.
+   One request imports at most 5000 data rows (`MAX_IMPORT_ROWS`); a larger
+   file is rejected whole with a 400 problem+json, nothing is written. The
+   rows are inserted in one DB transaction and positions/cash are folded once
+   at the end, so import time grows linearly with the row count.
 5. **Split transactions** carry the share *delta* in `quantity` (a 10:1 split
    on 10 shares is recorded as +90).
 6. **XIRR** is bisection on a fixed bracket with a fixed iteration budget in

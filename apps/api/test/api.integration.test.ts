@@ -286,3 +286,123 @@ describe('audit trail', () => {
     expect(rows.every((r) => typeof r.trace_id === 'string' && r.trace_id.length > 0)).toBe(true);
   });
 });
+
+describe('CSV import at scale (issue #4)', () => {
+  // A second user, so the session's portfolio cap and the "empty portfolio"
+  // assumption above are untouched.
+  let viaImport = '';
+  let viaTransactions = '';
+  const mapping = { ticker: 'symbol', date: 'trade_date', type: 'side', quantity: 'qty', price: 'unit_price', currency: 'ccy', fee: 'fee' };
+
+  const txCount = async (portfolio: string): Promise<number> => {
+    const { rows } = await pool.query('SELECT count(*)::int AS n FROM transactions WHERE portfolio_id = $1', [portfolio]);
+    return rows[0].n;
+  };
+
+  beforeAll(async () => {
+    const reg = await inject({
+      method: 'POST',
+      url: '/v1/auth/register',
+      payload: { email: 'bulk@example.es', password: 'password1234', jurisdiction: 'ES', base_currency: 'EUR' },
+      auth: false,
+    });
+    expect(reg.statusCode).toBe(201);
+    const setCookie = reg.headers['set-cookie'];
+    cookie = String(Array.isArray(setCookie) ? setCookie[0] : setCookie).split(';')[0]!;
+    for (const name of ['import', 'transactions']) {
+      const res = await inject({
+        method: 'POST',
+        url: '/v1/portfolios',
+        payload: { name, type: 'taxable', base_currency: 'EUR' },
+      });
+      expect(res.statusCode).toBe(201);
+      if (name === 'import') viaImport = res.json().id;
+      else viaTransactions = res.json().id;
+    }
+  });
+
+  it('derives the same positions and cash as writing the rows one by one', async () => {
+    // Mixed: buys and sells, two currencies, fees, a sell that moves average
+    // cost. Distinct dates per security keep the fold order unambiguous.
+    const lines = [
+      ['AAPL', '2026-02-02', 'buy', '50', '210', 'USD', '1.5'],
+      ['IWDA', '2026-02-02', 'buy', '400', '95', 'EUR', '0'],
+      ['AAPL', '2026-02-09', 'buy', '30', '220.25', 'USD', '1.5'],
+      ['AAPL', '2026-02-16', 'sell', '20', '230', 'USD', '2'],
+      ['IWDA', '2026-02-16', 'sell', '100', '97.5', 'EUR', '0.75'],
+      ['NVDA', '2026-02-16', 'buy', '10', '900', 'USD', '0'],
+    ];
+    const csv = [Object.values(mapping).join(','), ...lines.map((l) => l.join(','))].join('\n');
+    const imp = await inject({
+      method: 'POST',
+      url: `/v1/portfolios/${viaImport}/import`,
+      payload: { csv, mapping },
+    });
+    expect(imp.statusCode).toBe(200);
+    expect(imp.json()).toEqual({ imported: lines.length, skipped: [] });
+
+    for (const [ticker, date, side, qty, price, ccy, fee] of lines) {
+      const res = await inject({
+        method: 'POST',
+        url: `/v1/portfolios/${viaTransactions}/transactions`,
+        payload: {
+          type: side,
+          security_id: await secIdByTicker(ticker!),
+          trade_date: date,
+          quantity: qty,
+          price,
+          currency: ccy,
+          fee,
+        },
+      });
+      expect(res.statusCode).toBe(201);
+    }
+
+    const a = (await inject({ method: 'GET', url: `/v1/portfolios/${viaImport}/positions` })).json().data;
+    const b = (await inject({ method: 'GET', url: `/v1/portfolios/${viaTransactions}/positions` })).json().data;
+    expect(a).toEqual(b);
+    expect(a.positions.length).toBe(3);
+    const aapl = a.positions.find((p: { name: string }) => /apple/i.test(p.name));
+    expect(dec(aapl.quantity).eq('60')).toBe(true);
+    // USD cash: −(50×210+1.5) − (30×220.25+1.5) + (20×230−2) − 10×900
+    const usd = a.cash.find((c: { currency: string }) => c.currency === 'USD');
+    expect(dec(usd.amount).eq('-21512.5')).toBe(true);
+  });
+
+  it('imports 2000 rows in one request and folds them all', async () => {
+    const before = await txCount(viaImport);
+    const rowsCsv = Array.from({ length: 2000 }, () => 'MSFT,2026-03-02,buy,1,400,USD,0');
+    const csv = [Object.values(mapping).join(','), ...rowsCsv].join('\n');
+    const started = Date.now();
+    const res = await inject({ method: 'POST', url: `/v1/portfolios/${viaImport}/import`, payload: { csv, mapping } });
+    const elapsed = Date.now() - started;
+    expect(res.statusCode).toBe(200);
+    expect(res.json().imported).toBe(2000);
+    expect(await txCount(viaImport)).toBe(before + 2000);
+    const msft = (await inject({ method: 'GET', url: `/v1/portfolios/${viaImport}/positions` }))
+      .json()
+      .data.positions.find((p: { name: string }) => /microsoft/i.test(p.name));
+    expect(dec(msft.quantity).eq('2000')).toBe(true);
+    console.info(`CSV import of 2000 rows took ${elapsed} ms`);
+  });
+
+  it('rejects a CSV over the row cap with problem+json and imports nothing', async () => {
+    const before = await txCount(viaImport);
+    const rowsCsv = Array.from({ length: 5001 }, () => 'MSFT,2026-03-02,buy,1,400,USD,0');
+    const csv = [Object.values(mapping).join(','), ...rowsCsv].join('\n');
+    const res = await inject({ method: 'POST', url: `/v1/portfolios/${viaImport}/import`, payload: { csv, mapping } });
+    expect(res.statusCode).toBe(400);
+    expect(res.headers['content-type']).toContain('application/problem+json');
+    expect(res.json().title).toContain('5000');
+    expect(res.json().trace_id).toBeTruthy();
+    expect(await txCount(viaImport)).toBe(before);
+  });
+
+  it('accepts exactly the cap', async () => {
+    const rowsCsv = Array.from({ length: 5000 }, () => 'MSFT,2026-03-02,buy,1,400,USD,0');
+    const csv = [Object.values(mapping).join(','), ...rowsCsv].join('\n');
+    const res = await inject({ method: 'POST', url: `/v1/portfolios/${viaTransactions}/import`, payload: { csv, mapping } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().imported).toBe(5000);
+  });
+});
