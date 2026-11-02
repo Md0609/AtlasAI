@@ -406,3 +406,144 @@ describe('CSV import at scale (issue #4)', () => {
     expect(res.json().imported).toBe(5000);
   });
 });
+
+describe('ledger input validation (issue #6)', () => {
+  let pid = '';
+  let aapl = '';
+  let msft = '';
+  const mapping = { ticker: 'symbol', date: 'trade_date', type: 'side', quantity: 'qty', price: 'unit_price', currency: 'ccy', fee: 'fee' };
+
+  const snapshot = async () => {
+    const data = (await inject({ method: 'GET', url: `/v1/portfolios/${pid}/positions` })).json().data;
+    const { rows } = await pool.query('SELECT count(*)::int AS n FROM transactions WHERE portfolio_id = $1', [pid]);
+    return { data, txs: rows[0].n as number };
+  };
+  const postTx = (payload: Record<string, unknown>) =>
+    inject({
+      method: 'POST',
+      url: `/v1/portfolios/${pid}/transactions`,
+      payload: { currency: 'USD', ...payload },
+    });
+  const expectRejected = async (res: Awaited<ReturnType<typeof inject>>, before: Awaited<ReturnType<typeof snapshot>>) => {
+    expect(res.statusCode).toBe(400);
+    expect(res.headers['content-type']).toContain('application/problem+json');
+    expect(res.json().trace_id).toBeTruthy();
+    expect(await snapshot()).toEqual(before);
+  };
+
+  beforeAll(async () => {
+    const reg = await inject({
+      method: 'POST',
+      url: '/v1/auth/register',
+      payload: { email: 'validation@example.es', password: 'password1234', jurisdiction: 'ES', base_currency: 'EUR' },
+      auth: false,
+    });
+    expect(reg.statusCode).toBe(201);
+    const setCookie = reg.headers['set-cookie'];
+    cookie = String(Array.isArray(setCookie) ? setCookie[0] : setCookie).split(';')[0]!;
+    const res = await inject({ method: 'POST', url: '/v1/portfolios', payload: { name: 'v', type: 'taxable', base_currency: 'EUR' } });
+    pid = res.json().id;
+    aapl = await secIdByTicker('AAPL');
+    msft = await secIdByTicker('MSFT');
+    const buy = await postTx({ type: 'buy', security_id: aapl, trade_date: '2026-02-02', quantity: '10', price: '200' });
+    expect(buy.statusCode).toBe(201);
+  });
+
+  it.each([
+    ['negative quantity', { type: 'buy', quantity: '-3', price: '100' }],
+    ['zero quantity', { type: 'buy', quantity: '0', price: '100' }],
+    ['negative price', { type: 'buy', quantity: '1', price: '-100' }],
+    ['negative fee', { type: 'buy', quantity: '1', price: '100', fee: '-1' }],
+    ['negative sell quantity', { type: 'sell', quantity: '-1', price: '100' }],
+    ['non-numeric quantity', { type: 'buy', quantity: 'abc', price: '100' }],
+    ['non-numeric price', { type: 'buy', quantity: '1', price: '1e3' }],
+    ['non-numeric fee', { type: 'buy', quantity: '1', price: '100', fee: 'x' }],
+    ['impossible date', { type: 'buy', quantity: '1', price: '100', trade_date: '2026-02-30' }],
+  ])('POST /transactions rejects %s with 400 and changes nothing', async (_name, body) => {
+    const before = await snapshot();
+    await expectRejected(await postTx({ security_id: aapl, trade_date: '2026-02-10', ...body }), before);
+  });
+
+  it('POST /transactions rejects a non-numeric amount with 400', async () => {
+    const before = await snapshot();
+    await expectRejected(await postTx({ type: 'deposit', trade_date: '2026-02-10', amount: 'abc', currency: 'EUR' }), before);
+  });
+
+  it('rejects a sell with no position', async () => {
+    const before = await snapshot();
+    const res = await postTx({ type: 'sell', security_id: msft, trade_date: '2026-02-10', quantity: '1000', price: '100' });
+    await expectRejected(res, before);
+    expect(res.json().title).toMatch(/negative holding/);
+  });
+
+  it('rejects a sell above the holding and a backdated sell before the buy', async () => {
+    const before = await snapshot();
+    await expectRejected(await postTx({ type: 'sell', security_id: aapl, trade_date: '2026-02-10', quantity: '11', price: '210' }), before);
+    await expectRejected(await postTx({ type: 'sell', security_id: aapl, trade_date: '2026-01-15', quantity: '5', price: '210' }), before);
+  });
+
+  it('accepts selling exactly the holding, then refuses the next sell', async () => {
+    const sell = await postTx({ type: 'sell', security_id: aapl, trade_date: '2026-02-10', quantity: '10', price: '210' });
+    expect(sell.statusCode).toBe(201);
+    const after = await snapshot();
+    expect(after.data.positions.find((p: { security_id: string }) => p.security_id === aapl)).toBeUndefined();
+    await expectRejected(await postTx({ type: 'sell', security_id: aapl, trade_date: '2026-02-11', quantity: '1', price: '210' }), after);
+  });
+
+  it.each([
+    ['negative quantity', { quantity: '-5', price: '100' }],
+    ['non-numeric quantity', { quantity: 'abc', price: '100' }],
+    ['negative price', { quantity: '5', price: '-1' }],
+    ['impossible date', { quantity: '5', price: '100', trade_date: '2026-02-30' }],
+  ])('POST /positions rejects %s with 400', async (_name, body) => {
+    const before = await snapshot();
+    const res = await inject({
+      method: 'POST',
+      url: `/v1/portfolios/${pid}/positions`,
+      payload: { security_id: msft, currency: 'USD', trade_date: '2026-02-10', ...body },
+    });
+    await expectRejected(res, before);
+  });
+
+  it('CSV import skips invalid rows with a reason and still imports the valid ones', async () => {
+    const before = await snapshot();
+    const lines = [
+      // newest first, as many broker exports are: the sell is covered by the older buy below
+      'MSFT,2026-03-09,sell,4,410,USD,0', // line 2: ok
+      'MSFT,2026-03-02,buy,10,400,USD,1', // line 3: ok
+      'MSFT,2026-03-02,buy,-10,100,USD,0', // line 4: negative quantity
+      'MSFT,2026-02-30,buy,1,400,USD,0', // line 5: impossible date
+      'MSFT,2026-03-02,buy,1,-400,USD,0', // line 6: negative price
+      'MSFT,2026-03-02,buy,1,400,USD,-1', // line 7: negative fee
+      'MSFT,2026-03-02,buy,1,400,USD,abc', // line 8: non-numeric fee
+      'MSFT,2026-03-02,buy,abc,400,USD,0', // line 9: non-numeric quantity
+      'MSFT,2026-03-10,sell,7,420,USD,0', // line 10: 10 − 4 = 6 held → oversell
+      'NVDA,2026-03-02,sell,1,900,USD,0', // line 11: no position
+      'MSFT,2026-03-01,sell,1,400,USD,0', // line 12: before the buy
+    ];
+    const csv = [Object.values(mapping).join(','), ...lines].join('\n');
+    const res = await inject({ method: 'POST', url: `/v1/portfolios/${pid}/import`, payload: { csv, mapping } });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.imported).toBe(2);
+    expect(body.skipped.map((s: { line: number }) => s.line)).toEqual([4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    const reason = (line: number) => body.skipped.find((s: { line: number }) => s.line === line).reason;
+    expect(reason(4)).toMatch(/quantity must be greater than 0/);
+    expect(reason(5)).toMatch(/date/);
+    expect(reason(6)).toMatch(/price/);
+    expect(reason(7)).toMatch(/fee/);
+    expect(reason(8)).toMatch(/fee not numeric/);
+    expect(reason(9)).toMatch(/not numeric/);
+    for (const line of [10, 11, 12]) expect(reason(line)).toMatch(/exceeds the holding/);
+
+    const after = await snapshot();
+    expect(after.txs).toBe(before.txs + 2);
+    const pos = after.data.positions.find((p: { security_id: string }) => p.security_id === msft);
+    expect(dec(pos.quantity).eq('6')).toBe(true);
+  });
+
+  it('no route has left a negative position anywhere in this suite', async () => {
+    const { rows } = await pool.query('SELECT count(*)::int AS n FROM positions WHERE quantity < 0');
+    expect(rows[0].n).toBe(0);
+  });
+});

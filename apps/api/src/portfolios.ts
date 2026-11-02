@@ -17,6 +17,7 @@ import { z } from 'zod';
 import { dec, str } from '@atlas/domain';
 import { audit, requireUser } from './auth.js';
 import { parseCsv, problem } from './http.js';
+import { HoldingLedger, isCalendarDate, isDecimalString, tradeAmountsError } from './validation.js';
 
 const MAX_PORTFOLIOS = 3;
 // Data rows per CSV import request (header excluded). Larger files are
@@ -29,25 +30,41 @@ const portfolioSchema = z.object({
   base_currency: z.string().length(3),
 });
 
-const transactionSchema = z.object({
-  security_id: z.string().uuid().optional(),
-  type: z.enum(['buy', 'sell', 'dividend', 'split', 'spinoff', 'fee', 'fx', 'deposit', 'withdrawal']),
-  trade_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  quantity: z.string().optional(),
-  price: z.string().optional(),
-  amount: z.string().optional(),
-  currency: z.string().length(3),
-  fee: z.string().optional(),
-  note: z.string().max(500).optional(),
-});
+// Malformed numbers or impossible dates must be a 400, never a DecimalError
+// or a Postgres error surfacing as a 500 (issue #6).
+const decimalString = z.string().refine(isDecimalString, 'must be a plain decimal number, e.g. 12.5');
+const calendarDate = z.string().refine(isCalendarDate, 'must be an existing date in YYYY-MM-DD format');
 
-const positionEntrySchema = z.object({
-  security_id: z.string().uuid(),
-  quantity: z.string(),
-  price: z.string(),
-  currency: z.string().length(3),
-  trade_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-});
+const transactionSchema = z
+  .object({
+    security_id: z.string().uuid().optional(),
+    type: z.enum(['buy', 'sell', 'dividend', 'split', 'spinoff', 'fee', 'fx', 'deposit', 'withdrawal']),
+    trade_date: calendarDate,
+    quantity: decimalString.optional(),
+    price: decimalString.optional(),
+    amount: decimalString.optional(),
+    currency: z.string().length(3),
+    fee: decimalString.optional(),
+    note: z.string().max(500).optional(),
+  })
+  .superRefine((t, ctx) => {
+    if (t.type !== 'buy' && t.type !== 'sell') return;
+    const error = tradeAmountsError(t);
+    if (error) ctx.addIssue({ code: z.ZodIssueCode.custom, message: error });
+  });
+
+const positionEntrySchema = z
+  .object({
+    security_id: z.string().uuid(),
+    quantity: decimalString,
+    price: decimalString,
+    currency: z.string().length(3),
+    trade_date: calendarDate,
+  })
+  .superRefine((t, ctx) => {
+    const error = tradeAmountsError(t);
+    if (error) ctx.addIssue({ code: z.ZodIssueCode.custom, message: error });
+  });
 
 const privateAssetSchema = z.object({
   name: z.string().min(1).max(200),
@@ -152,6 +169,50 @@ export async function recomputeDerivedState(client: pg.PoolClient, portfolioId: 
   }
 }
 
+/**
+ * Serialises ledger writes per portfolio so two concurrent sells cannot both
+ * pass the holding check against the same snapshot.
+ */
+async function lockPortfolio(client: pg.PoolClient, portfolioId: string): Promise<void> {
+  await client.query('SELECT 1 FROM portfolios WHERE id = $1 FOR UPDATE', [portfolioId]);
+}
+
+/** End-of-day quantity changes already in the ledger, per security. */
+async function loadHoldings(
+  client: pg.PoolClient,
+  portfolioId: string,
+  securityIds: string[],
+): Promise<Map<string, HoldingLedger>> {
+  const ledgers = new Map<string, HoldingLedger>(securityIds.map((sid) => [sid, new HoldingLedger()]));
+  if (securityIds.length === 0) return ledgers;
+  const { rows } = await client.query(
+    `SELECT security_id, trade_date::text AS trade_date,
+            SUM(CASE WHEN tx_type = 'sell' THEN -quantity ELSE quantity END)::text AS delta
+       FROM transactions
+      WHERE portfolio_id = $1 AND security_id = ANY($2::uuid[]) AND quantity IS NOT NULL
+        AND tx_type IN ('buy', 'sell', 'split', 'spinoff')
+      GROUP BY security_id, trade_date`,
+    [portfolioId, securityIds],
+  );
+  for (const r of rows) ledgers.get(r.security_id)!.add(r.trade_date, r.delta);
+  return ledgers;
+}
+
+/** Quantity a transaction removes from its security's holding, if any. */
+function holdingReduction(input: z.infer<typeof transactionSchema>): ReturnType<typeof dec> | null {
+  if (!input.security_id || input.quantity === undefined) return null;
+  const q = dec(input.quantity);
+  if (input.type === 'sell') return q;
+  if ((input.type === 'split' || input.type === 'spinoff') && q.lt(0)) return q.negated();
+  return null;
+}
+
+function negativeHoldingMessage(input: { trade_date: string }, date: string): string {
+  return date === input.trade_date
+    ? `this would leave a negative holding on ${date}`
+    : `this would leave a negative holding on ${date} (trade date ${input.trade_date})`;
+}
+
 function txAmount(input: z.infer<typeof transactionSchema>): string | null {
   if (input.amount !== undefined) return input.amount;
   const fee = dec(input.fee ?? 0);
@@ -175,11 +236,22 @@ async function insertTransaction(
   client: pg.PoolClient,
   portfolioId: string,
   input: z.infer<typeof transactionSchema>,
-  { recompute = true }: { recompute?: boolean } = {},
+  { recompute = true, checkHolding = true }: { recompute?: boolean; checkHolding?: boolean } = {},
 ): Promise<string> {
   const amount = txAmount(input);
   if (amount === null) {
     throw Object.assign(new Error('amount is required for this transaction type'), { statusCode: 400 });
+  }
+  // A sell (or a negative split delta) may not take the holding below zero at
+  // the end of any day from its trade date on. Bulk callers check up front.
+  const reduction = checkHolding ? holdingReduction(input) : null;
+  if (reduction) {
+    await lockPortfolio(client, portfolioId);
+    const ledger = (await loadHoldings(client, portfolioId, [input.security_id!])).get(input.security_id!)!;
+    const result = ledger.tryReduce(input.trade_date, reduction);
+    if (!result.ok) {
+      throw Object.assign(new Error(negativeHoldingMessage(input, result.date)), { statusCode: 400 });
+    }
   }
   const { rows } = await client.query(
     `INSERT INTO transactions (portfolio_id, security_id, tx_type, trade_date, quantity, price, amount, currency, fee, note)
@@ -377,6 +449,7 @@ export function registerPortfolioRoutes(app: FastifyInstance, pool: pg.Pool): vo
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+      await lockPortfolio(client, id);
       const txId = await insertTransaction(client, id, parsed.data);
       await audit(client, user.id, 'transaction.create', 'transaction', txId, req.traceId, {
         type: parsed.data.type,
@@ -441,16 +514,18 @@ export function registerPortfolioRoutes(app: FastifyInstance, pool: pg.Pool): vo
     }
 
     const skipped: Array<{ line: number; reason: string }> = [];
+    const candidates: Array<{ line: number; input: z.infer<typeof transactionSchema> }> = [];
     let imported = 0;
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+      await lockPortfolio(client, id);
       for (let i = 1; i < rows.length; i++) {
         const line = rows[i]!;
         const get = (idx: number) => (idx >= 0 ? (line[idx] ?? '').trim() : '');
         const tradeDate = get(cols.date);
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(tradeDate)) {
-          skipped.push({ line: i + 1, reason: `unparseable date "${tradeDate}" (expected YYYY-MM-DD)` });
+        if (!isCalendarDate(tradeDate)) {
+          skipped.push({ line: i + 1, reason: `unparseable date "${tradeDate}" (expected an existing YYYY-MM-DD date)` });
           continue;
         }
         // Entity resolution, import edition: ISIN first, then ticker valid at
@@ -493,21 +568,51 @@ export function registerPortfolioRoutes(app: FastifyInstance, pool: pg.Pool): vo
         }
         const quantity = get(cols.quantity);
         const price = get(cols.price);
-        if (!/^-?\d+(\.\d+)?$/.test(quantity) || !/^-?\d+(\.\d+)?$/.test(price)) {
+        if (!isDecimalString(quantity) || !isDecimalString(price)) {
           skipped.push({ line: i + 1, reason: 'quantity/price not numeric' });
           continue;
         }
         const currency = (get(cols.currency) || defaults.currency || p.base_currency).toUpperCase();
         const fee = get(cols.fee) || '0';
-        await insertTransaction(client, id, {
-          security_id: securityId,
-          type: rawType,
-          trade_date: tradeDate,
-          quantity,
-          price,
-          currency,
-          fee,
-        }, { recompute: false });
+        if (!isDecimalString(fee)) {
+          skipped.push({ line: i + 1, reason: 'fee not numeric' });
+          continue;
+        }
+        const amountsError = tradeAmountsError({ quantity, price, fee });
+        if (amountsError) {
+          skipped.push({ line: i + 1, reason: amountsError });
+          continue;
+        }
+        candidates.push({
+          line: i + 1,
+          input: { security_id: securityId, type: rawType, trade_date: tradeDate, quantity, price, currency, fee },
+        });
+      }
+
+      // Holding check over the whole file: every buy counts, then sells are
+      // accepted in trade-date order (file order within a day) while no
+      // end-of-day holding goes negative. Row order in the file does not
+      // matter, so newest-first broker exports import the same as oldest-first.
+      const ledgers = await loadHoldings(client, id, [...new Set(candidates.map((c) => c.input.security_id!))]);
+      for (const c of candidates) {
+        if (c.input.type === 'buy') ledgers.get(c.input.security_id!)!.add(c.input.trade_date, c.input.quantity!);
+      }
+      const rejected = new Set<number>();
+      const sells = candidates
+        .filter((c) => c.input.type === 'sell')
+        .sort((a, b) => a.input.trade_date.localeCompare(b.input.trade_date) || a.line - b.line);
+      for (const c of sells) {
+        const result = ledgers.get(c.input.security_id!)!.tryReduce(c.input.trade_date, c.input.quantity!);
+        if (!result.ok) {
+          rejected.add(c.line);
+          skipped.push({ line: c.line, reason: `sell exceeds the holding: ${negativeHoldingMessage(c.input, result.date)}` });
+        }
+      }
+      skipped.sort((a, b) => a.line - b.line);
+
+      for (const c of candidates) {
+        if (rejected.has(c.line)) continue;
+        await insertTransaction(client, id, c.input, { recompute: false, checkHolding: false });
         imported += 1;
       }
       if (imported > 0) await recomputeDerivedState(client, id);
