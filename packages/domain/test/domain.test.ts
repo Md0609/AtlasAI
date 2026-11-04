@@ -6,6 +6,7 @@ import {
   str,
   money,
   convert,
+  tradingDayOnOrAfter,
   tradingDaysBetween,
   isTradingDay,
 } from '@atlas/domain';
@@ -37,5 +38,13 @@ describe('trading days', () => {
     const days = tradingDaysBetween('2026-01-02', '2026-01-05');
     expect(days).toEqual(['2026-01-02', '2026-01-05']);
     expect(isTradingDay('2026-01-03')).toBe(false); // Saturday
+  });
+
+  it('books a weekend date on the next trading day and keeps trading days as they are', () => {
+    expect(tradingDayOnOrAfter('2026-02-06')).toBe('2026-02-06'); // Friday
+    expect(tradingDayOnOrAfter('2026-02-07')).toBe('2026-02-09'); // Saturday → Monday
+    expect(tradingDayOnOrAfter('2026-02-08')).toBe('2026-02-09'); // Sunday → Monday
+    expect(tradingDayOnOrAfter('2026-02-09')).toBe('2026-02-09'); // Monday
+    expect(tradingDayOnOrAfter('2026-02-28')).toBe('2026-03-02'); // Saturday across a month end
   });
 });

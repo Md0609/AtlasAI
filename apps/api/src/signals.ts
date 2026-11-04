@@ -20,7 +20,7 @@ import {
   type CashflowPoint,
   type CurrencyBucketInput,
 } from '@atlas/signal-engine';
-import { Dec, dec, inputHash, str, tradingDaysBetween } from '@atlas/domain';
+import { Dec, dec, inputHash, str, tradingDayOnOrAfter, tradingDaysBetween } from '@atlas/domain';
 import { requireUser } from './auth.js';
 import { problem } from './http.js';
 import { ownedPortfolio } from './portfolios.js';
@@ -264,7 +264,11 @@ async function computePerformance(
        FROM fx_rates ORDER BY rate_date`,
   );
 
-  const firstTx = txs[0]!.trade_date as string;
+  // The daily series only has trading days. A transaction dated on a weekend is
+  // booked on the next trading day (tradingDayOnOrAfter), so it is never skipped
+  // and /performance stays consistent with /positions and /exposure.
+  const bookingDay = (t: (typeof txs)[number]): string => tradingDayOnOrAfter(t.trade_date as string);
+  const firstTx = bookingDay(txs[0]!);
   const lastBar = bars.length ? (bars[bars.length - 1]!.bar_date as string) : firstTx;
   if (lastBar <= firstTx) return null;
   const days = tradingDaysBetween(firstTx, lastBar);
@@ -312,9 +316,10 @@ async function computePerformance(
   }
   const txByDate = new Map<string, typeof txs>();
   for (const t of txs) {
-    const list = txByDate.get(t.trade_date) ?? [];
+    const day = bookingDay(t);
+    const list = txByDate.get(day) ?? [];
     list.push(t);
-    txByDate.set(t.trade_date, list);
+    txByDate.set(day, list);
   }
 
   const qty = new Map<string, Dec>();

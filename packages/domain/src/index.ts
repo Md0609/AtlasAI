@@ -92,6 +92,17 @@ export function isTradingDay(d: IsoDate): boolean {
   return dow !== 0 && dow !== 6;
 }
 
+/**
+ * Day on which a dated event is booked in a trading-day series: the date itself
+ * when it is a trading day, otherwise the next trading day (a Saturday or Sunday
+ * transaction counts as made on the following Monday, like a settlement date).
+ */
+export function tradingDayOnOrAfter(d: IsoDate): IsoDate {
+  let day = d;
+  while (!isTradingDay(day)) day = addDays(day, 1);
+  return day;
+}
+
 export function tradingDaysBetween(from: IsoDate, to: IsoDate): IsoDate[] {
   const out: IsoDate[] = [];
   for (let d = from; d <= to; d = addDays(d, 1)) {
