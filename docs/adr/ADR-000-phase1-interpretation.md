@@ -66,6 +66,24 @@ Phase 1 structurally requires.
 6. **XIRR** is bisection on a fixed bracket with a fixed iteration budget in
    pure decimal arithmetic — deterministic by construction, returns `null`
    (a declared gap) when no sign change exists rather than fabricating a rate.
+7. **Order within a trade date**: the position/cash fold and the performance
+   fold read transactions by trade date and, within one date, fold every
+   transaction other than a sell (buys, splits, deposits…) before the sells. Remaining
+   ties are broken by the row's content (type, security, quantity, price,
+   amount, currency, fee), never by `created_at` (constant for a whole DB
+   transaction, so an import writes every row with the same value) or the
+   random `id`. This is the same end-of-day reading the holding check
+   already applies, and under average cost it makes the result independent
+   of CSV row order and of insertion order within a day: a broker export
+   that lists the sell before the buy imports exactly like the reverse.
+   Consequence: quantity and cash never depend on the order, but an intraday
+   round trip in which a sell really happened before a re-buy is read as
+   buy-then-sell, so the average cost blends the re-buy with the earlier
+   holding instead of restarting at the re-buy price (hold 10@100, sell 10,
+   re-buy 10@120 on one date → avg 110, not 120). The ledger has no
+   intraday time to tell the two apart; a per-row time or sequence would be
+   a later, versioned change.
+   (`FOLD_ORDER_BY` in `apps/api/src/portfolios.ts`.)
 
 ## Deliberately deferred (not Phase 1)
 

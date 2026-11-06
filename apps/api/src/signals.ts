@@ -23,7 +23,7 @@ import {
 import { Dec, dec, inputHash, str, tradingDayOnOrAfter, tradingDaysBetween } from '@atlas/domain';
 import { requireUser } from './auth.js';
 import { problem } from './http.js';
-import { ownedPortfolio } from './portfolios.js';
+import { FOLD_ORDER_BY, ownedPortfolio } from './portfolios.js';
 
 // ---------------------------------------------------------------------------
 // Input loading
@@ -246,7 +246,7 @@ async function computePerformance(
 ): Promise<PerfOut | null> {
   const { rows: txs } = await pool.query(
     `SELECT security_id, tx_type, trade_date::text, quantity::text, amount::text, currency
-       FROM transactions WHERE portfolio_id = $1 ORDER BY trade_date, created_at`,
+       FROM transactions WHERE portfolio_id = $1 ${FOLD_ORDER_BY}`,
     [portfolio.id],
   );
   if (txs.length === 0) return null;
