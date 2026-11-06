@@ -111,6 +111,20 @@ export async function ownedPortfolio(
 }
 
 /**
+ * Order of the money folds (ADR-000, decision 7). Within a trade date every
+ * transaction other than a sell is folded before the sells — the end-of-day
+ * reading the holding check already uses — and the remaining ties are broken by the
+ * row's content, never by `created_at` (constant inside a DB transaction) or
+ * the random `id`. The result therefore does not depend on CSV row order or
+ * on insertion order within a day. Columns are qualified so they always mean
+ * the table columns, not a `::text` alias in the SELECT list.
+ */
+export const FOLD_ORDER_BY = `ORDER BY transactions.trade_date,
+            (transactions.tx_type = 'sell'),
+            transactions.tx_type, transactions.security_id, transactions.quantity,
+            transactions.price, transactions.amount, transactions.currency, transactions.fee`;
+
+/**
  * The fold: transactions → positions + cash balances. Runs inside the
  * caller's transaction so a torn write is impossible (§27.4).
  */
@@ -118,7 +132,7 @@ export async function recomputeDerivedState(client: pg.PoolClient, portfolioId: 
   const { rows: txs } = await client.query(
     `SELECT security_id, tx_type, quantity, price, amount, currency, fee
        FROM transactions WHERE portfolio_id = $1
-      ORDER BY trade_date, created_at`,
+      ${FOLD_ORDER_BY}`,
     [portfolioId],
   );
 
