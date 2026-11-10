@@ -3,6 +3,8 @@
 Implementation of **Design blueprint §B1 Phase 1** for Atlas AI, plus the
 minimal Phase-0 scaffolding it structurally requires. Scope, decisions and
 deliberate deferrals: [`docs/adr/ADR-000-phase1-interpretation.md`](docs/adr/ADR-000-phase1-interpretation.md).
+Purchases without a recorded deposit (negative cash, TWR/drawdown gaps):
+[`docs/adr/ADR-001-unfunded-purchases.md`](docs/adr/ADR-001-unfunded-purchases.md).
 
 ## Layout
 

@@ -6,7 +6,12 @@
  *  - MWR: XIRR via deterministic bisection on (−0.9999, 10), ACT/365,
  *    fixed iteration budget — same inputs, same bits (FR-5.6). Returns null
  *    (a declared gap) when no sign change exists or history is insufficient.
- *  - Drawdown: max and current, on the portfolio value series.
+ *    Undefined (null) when a period starts with no positive capital base
+ *    while the portfolio holds something: a denominator ≤ 0 with a non-zero
+ *    end value (e.g. purchases with no recorded deposit, ADR-001). A return
+ *    on zero or negative capital has no meaning, so it is never chained.
+ *  - Drawdown: max and current, on the portfolio value series, always in
+ *    [0, 1]: a value at or below zero is a 100% drawdown, never more.
  *  - FR-3.6: local return vs FX return separated per pricing-currency bucket:
  *      local = (Σ qᵢ·p_end,ᵢ) / (Σ qᵢ·p_start,ᵢ) − 1   (current quantities)
  *      fx    = rate_end(ccy→base) / rate_start(ccy→base) − 1
@@ -35,8 +40,12 @@ export function timeWeightedReturn(series: ValuePoint[], flows: Flow[]): Dec | n
     const prev = dec(series[i - 1]!.value);
     const flow = flowByDate.get(series[i]!.date) ?? ZERO;
     const denom = prev.plus(flow);
-    if (denom.isZero()) continue; // empty portfolio day contributes nothing
-    const r = dec(series[i]!.value).div(denom).minus(1);
+    const value = dec(series[i]!.value);
+    if (denom.isZero() && value.isZero()) continue; // empty portfolio day contributes nothing
+    // No positive capital base, or a value below zero (more than everything lost):
+    // the return is undefined, never below −100% (ADR-001).
+    if (!denom.gt(0) || value.isNegative()) return null;
+    const r = value.div(denom).minus(1);
     acc = acc.times(ONE.plus(r));
   }
   return acc.minus(1);
@@ -101,7 +110,8 @@ export function drawdown(series: ValuePoint[]): { max: Dec; current: Dec } | nul
     const v = dec(p.value);
     if (v.gt(peak)) peak = v;
     if (peak.gt(0)) {
-      const dd = ONE.minus(v.div(peak));
+      // A value at or below zero has lost everything: 100%, not more (ADR-001).
+      const dd = v.gt(0) ? ONE.minus(v.div(peak)) : ONE;
       if (dd.gt(maxDd)) maxDd = dd;
       current = dd;
     }

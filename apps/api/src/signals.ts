@@ -370,6 +370,15 @@ async function computePerformance(
       if (!pricesAsOf || bar.d > pricesAsOf) pricesAsOf = bar.d;
     }
     for (const [ccy, amt] of cash) {
+      if (amt.isNegative() && !gapNoted.has(`neg-${ccy}`)) {
+        gapNoted.add(`neg-${ccy}`);
+        gaps.push({
+          component: 'performance',
+          reason:
+            `${ccy} cash went negative: purchases without a recorded deposit are treated as borrowed ` +
+            `and the value series is net of that debt (ADR-001)`,
+        });
+      }
       const rate = fxRate(ccy, portfolio.base_currency, day);
       if (rate === null) continue;
       value = value.plus(amt.times(rate));
@@ -381,7 +390,17 @@ async function computePerformance(
   const terminal = dec(series[series.length - 1]!.value);
   const mwrInput: CashflowPoint[] = [...mwrFlows, { date: days[days.length - 1]!, amount: str(terminal) }];
   const mwr = xirr(mwrInput);
-  const dd = drawdown(series);
+  // Without a positive capital base the value series is a net-of-debt residue:
+  // its drawdown would be as meaningless as its TWR, so both are declared gaps.
+  const dd = twr === null ? null : drawdown(series);
+  if (twr === null) {
+    gaps.push({
+      component: 'performance',
+      reason:
+        'TWR and drawdown undefined: the portfolio held positions with no positive capital base ' +
+        '(purchases without recorded deposits); record the deposits that funded them (ADR-001)',
+    });
+  }
 
   // FR-3.6 decomposition: pricing-currency buckets, window start vs end.
   const startDay = days[0]!;
