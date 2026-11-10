@@ -328,6 +328,7 @@ async function computePerformance(
   const flows: Flow[] = [];
   const mwrFlows: CashflowPoint[] = [];
   let pricesAsOf: string | null = null;
+  let unfundedWhileHolding = false;
 
   for (const day of days) {
     for (const t of txByDate.get(day) ?? []) {
@@ -369,24 +370,32 @@ async function computePerformance(
       value = value.plus(q.times(bar.px).times(rate));
       if (!pricesAsOf || bar.d > pricesAsOf) pricesAsOf = bar.d;
     }
+    const holding = [...qty.values()].some((q) => !q.isZero());
+    let netCash = dec(0);
     for (const [ccy, amt] of cash) {
-      if (amt.isNegative() && !gapNoted.has(`neg-${ccy}`)) {
-        gapNoted.add(`neg-${ccy}`);
-        gaps.push({
-          component: 'performance',
-          reason:
-            `${ccy} cash went negative: purchases without a recorded deposit are treated as borrowed ` +
-            `and the value series is net of that debt (ADR-001)`,
-        });
-      }
       const rate = fxRate(ccy, portfolio.base_currency, day);
       if (rate === null) continue;
+      netCash = netCash.plus(amt.times(rate));
       value = value.plus(amt.times(rate));
+    }
+    // Net cash below zero while holding positions = purchases nobody funded.
+    // Netted across currencies: a USD buy paid from EUR cash is funded. A fee
+    // before the first deposit (nothing held) is not an unfunded purchase.
+    if (holding && netCash.isNegative() && !unfundedWhileHolding) {
+      unfundedWhileHolding = true;
+      gaps.push({
+        component: 'performance',
+        reason:
+          'cash went negative while holding positions: purchases without a recorded deposit are treated as ' +
+          'borrowed and the value series is net of that debt (ADR-001)',
+      });
     }
     series.push({ date: day, value: str(value) });
   }
 
-  const twr = timeWeightedReturn(series, flows);
+  // With unfunded purchases the value series is holdings net of a debt nobody
+  // recorded: any return on it (and its drawdown) is noise, whatever its sign.
+  const twr = unfundedWhileHolding ? null : timeWeightedReturn(series, flows);
   const terminal = dec(series[series.length - 1]!.value);
   const mwrInput: CashflowPoint[] = [...mwrFlows, { date: days[days.length - 1]!, amount: str(terminal) }];
   const mwr = xirr(mwrInput);
@@ -396,9 +405,10 @@ async function computePerformance(
   if (twr === null) {
     gaps.push({
       component: 'performance',
-      reason:
-        'TWR and drawdown undefined: the portfolio held positions with no positive capital base ' +
-        '(purchases without recorded deposits); record the deposits that funded them (ADR-001)',
+      reason: unfundedWhileHolding
+        ? 'TWR and drawdown undefined: positions were held with negative cash ' +
+          '(purchases without recorded deposits); record the deposits that funded them (ADR-001)'
+        : 'TWR and drawdown undefined: the value series has a period with no positive capital base (ADR-001)',
     });
   }
 

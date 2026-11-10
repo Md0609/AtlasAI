@@ -6,10 +6,12 @@
  *  - MWR: XIRR via deterministic bisection on (−0.9999, 10), ACT/365,
  *    fixed iteration budget — same inputs, same bits (FR-5.6). Returns null
  *    (a declared gap) when no sign change exists or history is insufficient.
- *    Undefined (null) when a period starts with no positive capital base
- *    while the portfolio holds something: a denominator ≤ 0 with a non-zero
- *    end value (e.g. purchases with no recorded deposit, ADR-001). A return
- *    on zero or negative capital has no meaning, so it is never chained.
+ *    A day that ends empty (V_d = 0) uses the end-of-day convention instead,
+ *    r_d = (V_d − F_d) / V_{d−1} − 1, so selling everything and withdrawing
+ *    the proceeds the same day is the day's real return, not −100%.
+ *    Undefined (null) when the end value is positive with no positive
+ *    capital base behind it, or when a day would lose more than 100%
+ *    (ADR-001). Days with neither capital nor holdings contribute nothing.
  *  - Drawdown: max and current, on the portfolio value series, always in
  *    [0, 1]: a value at or below zero is a 100% drawdown, never more.
  *  - FR-3.6: local return vs FX return separated per pricing-currency bucket:
@@ -41,11 +43,22 @@ export function timeWeightedReturn(series: ValuePoint[], flows: Flow[]): Dec | n
     const flow = flowByDate.get(series[i]!.date) ?? ZERO;
     const denom = prev.plus(flow);
     const value = dec(series[i]!.value);
-    if (denom.isZero() && value.isZero()) continue; // empty portfolio day contributes nothing
-    // No positive capital base, or a value below zero (more than everything lost):
-    // the return is undefined, never below −100% (ADR-001).
-    if (!denom.gt(0) || value.isNegative()) return null;
-    const r = value.div(denom).minus(1);
+    let r: Dec;
+    if (value.isZero() && prev.gt(0)) {
+      // Emptied today (e.g. sell everything and withdraw the proceeds): the
+      // outflow happened at the end of the day, so value the day before it.
+      r = value.minus(flow).div(prev).minus(1);
+    } else if (!denom.gt(0)) {
+      // Nothing invested and nothing held (empty, or only a fee before the
+      // first deposit): the day contributes nothing. Something held with no
+      // positive capital base behind it: the return is undefined (ADR-001).
+      if (!value.gt(0)) continue;
+      return null;
+    } else {
+      r = value.div(denom).minus(1);
+    }
+    // Below −100% (more than everything lost) is never chained (ADR-001).
+    if (r.lt(-1)) return null;
     acc = acc.times(ONE.plus(r));
   }
   return acc.minus(1);

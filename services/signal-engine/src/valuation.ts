@@ -63,21 +63,22 @@ export function valuePortfolio(inputs: EngineInputs): ValuationResult {
       gaps.push({ component: 'valuation', reason: `no FX path ${c.currency}→${inputs.baseCurrency} for cash` });
       continue;
     }
-    if (dec(c.amount).isNegative()) {
-      // Kept as leverage (the value is net of it), but never silently (ADR-001).
-      gaps.push({
-        component: 'valuation',
-        reason:
-          `negative ${c.currency} cash balance: purchases without a recorded deposit are treated as borrowed, ` +
-          `so the total value is net of that debt; record the deposits that funded them`,
-      });
-    }
     cashRows.push({ currency: c.currency, amountLocal: dec(c.amount), valueBase: dec(c.amount).times(rate) });
   }
 
   const positionsTotal = rows.reduce((acc, r) => acc.plus(r.valueBase), ZERO);
   const cashTotal = cashRows.reduce((acc, r) => acc.plus(r.valueBase), ZERO);
   const totalBase = positionsTotal.plus(cashTotal);
+  if (cashTotal.isNegative()) {
+    // Kept as leverage (the value is net of it), but never silently (ADR-001).
+    // Netted across currencies: a USD buy paid from EUR cash is funded.
+    gaps.push({
+      component: 'valuation',
+      reason:
+        'negative net cash balance: purchases without a recorded deposit are treated as borrowed, ' +
+        'so the total value is net of that debt; record the deposits that funded them',
+    });
+  }
 
   const weights: WeightRow[] = [];
   let cashWeight = ZERO;

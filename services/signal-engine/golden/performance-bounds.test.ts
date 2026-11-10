@@ -103,6 +103,30 @@ describe('performance bounds (issue #3)', () => {
     expect(twr!.toFixed(6)).toBe('0.100000');
   });
 
+  it('emptied the same day (sell all + withdraw): the day\'s real return, not −100%', () => {
+    const series = [
+      { date: '2026-01-01', value: '1000' },
+      { date: '2026-01-02', value: '1000' },
+      { date: '2026-01-03', value: '0' },
+    ];
+    // Sold 2% below the previous close and withdrew 980 → −2%.
+    expect(timeWeightedReturn(series, [{ date: '2026-01-03', amount: '-980' }])!.toFixed(6)).toBe('-0.020000');
+    // Sold 2% above → +2% (the start-of-day denominator would be negative).
+    expect(timeWeightedReturn(series, [{ date: '2026-01-03', amount: '-1020' }])!.toFixed(6)).toBe('0.020000');
+  });
+
+  it('a fee before the first deposit (negative value, nothing held) contributes nothing', () => {
+    const twr = timeWeightedReturn(
+      [
+        { date: '2026-01-01', value: '-5' },
+        { date: '2026-01-02', value: '995' },
+        { date: '2026-01-03', value: '1094.5' },
+      ],
+      [{ date: '2026-01-02', amount: '1000' }],
+    );
+    expect(twr!.toFixed(6)).toBe('0.100000');
+  });
+
   it('a value below zero is a 100% drawdown, not more', () => {
     const dd = drawdown([
       { date: 'd1', value: '100' },
