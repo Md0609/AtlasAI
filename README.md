@@ -63,6 +63,9 @@ npm test
 - `apps/api/test` — jurisdiction gate, portfolio cap, transactions→derived
   positions in one DB transaction, CSV import resolving a historical ticker,
   exposure/performance endpoints with provenance + explicit unknown slice.
+- `apps/web/src/features/*/*.test.tsx` — render tests (Testing Library on jsdom,
+  API mocked at `fetch`) for auth, portfolios, positions, exposure (unknown row
+  stays visible), performance and the CSV column mapping. No database needed.
 
 ## Honesty surface (what to look at)
 
