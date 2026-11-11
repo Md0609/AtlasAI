@@ -10,6 +10,8 @@ export default defineConfig({
       'services/signal-engine/golden/**/*.test.ts',
       'services/ingest/test/**/*.test.ts',
       'apps/api/test/**/*.test.ts',
+      // Web render tests opt into jsdom per file with `// @vitest-environment jsdom`.
+      'apps/web/src/**/*.test.tsx',
     ],
     testTimeout: 120_000,
     hookTimeout: 120_000,

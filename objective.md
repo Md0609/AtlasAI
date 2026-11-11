@@ -48,7 +48,7 @@ crudos y tiene que sacar él solo las conclusiones.
 
 | ID | Paso | Hecho cuando | Estado |
 |---|---|---|---|
-| AT-1 | Trocear la web | `apps/web/src/features/{auth,portfolios,summary,positions,exposure,performance,import}/` + `components/`; cero cambio visual; tests de render con Testing Library (dependencia justificada) | ⬜ |
+| AT-1 | Trocear la web | `apps/web/src/features/{auth,portfolios,summary,positions,exposure,performance,import}/` + `components/`; cero cambio visual; tests de render con Testing Library (dependencia justificada) | ✅ |
 | AT-2 | Sistema visual | Tokens claro/oscuro, `Button`, `Badge`, `EmptyState`, `Spinner`, `Toast`, `ThemeToggle` (ver §4); formateadores únicos de dinero, % y fechas | ⬜ |
 | AT-3 | Pestaña **Resumen** | 4 KPI (valor total, rentabilidad del periodo, mayor posición %, % desconocido) + 1–2 frases generadas **de forma determinista** desde la respuesta del motor (sin LLM) | ⬜ |
 | AT-4 | Exposición visual | Barras horizontales ordenadas (top 8 + "Otros"); "Desconocido" siempre aparte y con su propio estilo; tabla plegable. "Otros" se suma con aritmética decimal (`@atlas/domain`), nunca con `Number` (ver §6) | ⬜ |
