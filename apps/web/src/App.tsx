@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, type Me } from './api';
+import { Spinner } from './components/Spinner';
+import { ToastProvider } from './components/Toast';
 import { Auth } from './features/auth/Auth';
 import { Home } from './features/portfolios/Home';
 
@@ -16,7 +18,15 @@ export default function App() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="shell">Loading…</div>;
-  if (!me) return <Auth onAuthed={setMe} />;
-  return <Home me={me} onLogout={() => api.post('/v1/auth/logout').then(() => setMe(null))} />;
+  return (
+    <ToastProvider>
+      {loading ? (
+        <div className="shell"><Spinner /></div>
+      ) : !me ? (
+        <Auth onAuthed={setMe} />
+      ) : (
+        <Home me={me} onLogout={() => api.post('/v1/auth/logout').then(() => setMe(null))} />
+      )}
+    </ToastProvider>
+  );
 }

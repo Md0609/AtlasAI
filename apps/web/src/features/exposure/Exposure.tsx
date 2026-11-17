@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api, type ExposureResponse, type Portfolio } from '../../api';
-import { num, pct } from '../../components/format';
+import { Badge } from '../../components/Badge';
+import { Spinner } from '../../components/Spinner';
+import { formatDate, formatFixed, formatMoney, formatPct } from '../../components/format';
 
 export function Exposure({ portfolio }: { portfolio: Portfolio }) {
   const [dimension, setDimension] = useState<'sector' | 'country' | 'currency'>('sector');
@@ -13,7 +15,7 @@ export function Exposure({ portfolio }: { portfolio: Portfolio }) {
       .catch(() => setResp(null));
   }, [portfolio.id, dimension]);
 
-  if (!resp) return <div className="card muted">Loading…</div>;
+  if (!resp) return <div className="card"><Spinner /></div>;
   const d = resp.data;
   return (
     <div className="card">
@@ -22,13 +24,13 @@ export function Exposure({ portfolio }: { portfolio: Portfolio }) {
           <button key={x} className={dimension === x ? 'tab active' : 'tab'} onClick={() => setDimension(x)}>{x}</button>
         ))}
       </div>
-      <p>Total value: <strong>{num(d.total_value_base)} {d.base_currency}</strong> · cash {pct(d.cash_weight)}</p>
+      <p>Total value: <strong className="tnum">{formatMoney(d.total_value_base, d.base_currency)}</strong> · cash {formatPct(d.cash_weight)}</p>
       <table>
         <thead><tr><th>{d.dimension}</th><th>Weight</th></tr></thead>
         <tbody>
           {d.slices.map((s) => (
             <tr key={s.key} className={s.key === 'UNKNOWN' ? 'unknown' : ''}>
-              <td>{s.key}</td><td>{pct(s.weight)}</td>
+              <td>{s.key}</td><td>{formatPct(s.weight)}</td>
             </tr>
           ))}
         </tbody>
@@ -39,24 +41,24 @@ export function Exposure({ portfolio }: { portfolio: Portfolio }) {
         <tbody>
           {d.look_through.map((r) => (
             <tr key={r.securityId ?? 'unknown'} className={r.securityId === null ? 'unknown' : ''}>
-              <td>{r.label}</td><td>{pct(r.weight)}</td><td>{pct(r.viaDirect)}</td><td>{pct(r.viaFunds)}</td>
+              <td>{r.label}</td><td>{formatPct(r.weight)}</td><td>{formatPct(r.viaDirect)}</td><td>{formatPct(r.viaFunds)}</td>
             </tr>
           ))}
         </tbody>
       </table>
       <p className="muted">
-        Concentration: HHI {Number(d.concentration.hhi).toFixed(3)} · effective N{' '}
-        {Number(d.concentration.effectiveN).toFixed(2)} of {d.concentration.nominalN} names
+        Concentration: HHI {formatFixed(d.concentration.hhi, 3)} · effective N{' '}
+        {formatFixed(d.concentration.effectiveN, 2)} of {d.concentration.nominalN} names
       </p>
       {resp.gaps.length > 0 && (
         <div className="gaps">
-          {resp.gaps.map((g, i) => <div key={i}>⚠ {g.reason}</div>)}
+          {resp.gaps.map((g, i) => <div key={i}><Badge tone="warning">Data gap</Badge> {g.reason}</div>)}
         </div>
       )}
       <p className="provenance">
         engine {resp.provenance.engineVersion} · {resp.provenance.methodology} · inputs{' '}
-        {resp.provenance.inputHash.slice(0, 12)}… · prices as of {resp.staleness.prices_as_of ?? '—'} · holdings as of{' '}
-        {resp.staleness.holdings_as_of ?? '—'}
+        {resp.provenance.inputHash.slice(0, 12)}… · prices as of {formatDate(resp.staleness.prices_as_of)} · holdings as of{' '}
+        {formatDate(resp.staleness.holdings_as_of)}
       </p>
     </div>
   );

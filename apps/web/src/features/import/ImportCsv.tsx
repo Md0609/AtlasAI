@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, ApiError, type Portfolio } from '../../api';
+import { Button } from '../../components/Button';
 
 // ---------------------------------------------------------------------------
 // CSV import + mapping UI (Design §B1 Phase 1 deliverable)
@@ -85,7 +86,7 @@ export function ImportCsv({ portfolio, onDone }: { portfolio: Portfolio; onDone:
           </div>
         </>
       )}
-      <button onClick={submit} disabled={!csv}>Import</button>
+      <Button onClick={submit} disabled={!csv}>Import</Button>
       {error && <div className="error">{error}</div>}
       {result && (
         <div>
@@ -97,7 +98,7 @@ export function ImportCsv({ portfolio, onDone }: { portfolio: Portfolio; onDone:
               ))}
             </ul>
           )}
-          <button className="link" onClick={onDone}>View positions →</button>
+          <Button variant="link" onClick={onDone}>View positions →</Button>
         </div>
       )}
     </div>

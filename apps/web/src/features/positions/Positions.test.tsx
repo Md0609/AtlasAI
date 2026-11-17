@@ -26,10 +26,11 @@ describe('Positions', () => {
       [...tr.querySelectorAll('td')].map((td) => td.textContent),
     );
     expect(rows).toEqual([
-      ['Apple Inc. USD', (10.5).toLocaleString(undefined, { maximumFractionDigits: 4 }), `${(180.25).toLocaleString(undefined, { maximumFractionDigits: 2 })} USD`],
+      ['Apple Inc. USD', '10.5', '180.25 USD'],
       ['Mystery Co EUR', '3', '—'],
     ]);
-    expect(screen.getByText(`${(1234.5).toLocaleString(undefined, { maximumFractionDigits: 2 })} EUR`)).toBeTruthy();
+    // Shared money formatter: fixed locale, the currency's minor unit (2 for EUR).
+    expect(screen.getByText('1,234.50 EUR')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Deposit EUR' })).toBeTruthy();
   });
 

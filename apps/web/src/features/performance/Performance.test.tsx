@@ -24,14 +24,14 @@ describe('Performance', () => {
     });
     const { container } = render(<Performance portfolio={portfolio} />);
 
-    expect(await screen.findByText('Window 2026-01-02 → 2026-11-10')).toBeTruthy();
+    expect(await screen.findByText('Window 2 Jan 2026 → 10 Nov 2026')).toBeTruthy();
     const cell = (label: string) => screen.getByText(label).nextElementSibling?.textContent;
     expect(cell('Time-weighted return (TWR)')).toBe('8.765%');
     expect(cell('Money-weighted return (MWR / XIRR)')).toBe('—');
     expect(cell('Max drawdown')).toBe('-12.34%');
     expect(cell('Current drawdown')).toBe('-2.00%');
     expect(screen.getByText('USD').closest('tr')!.textContent).toBe('USD12.000%-3.400%');
-    expect(container.querySelector('.gaps')?.textContent).toBe('⚠ Missing price for Mystery Co');
+    expect(container.querySelector('.gaps')?.textContent).toBe('Data gap Missing price for Mystery Co');
     expect(calls[0].path).toBe('/v1/portfolios/p1/performance?method=both');
   });
 
@@ -43,9 +43,9 @@ describe('Performance', () => {
         staleness: { prices_as_of: null },
       },
     });
-    render(<Performance portfolio={portfolio} />);
+    const { container } = render(<Performance portfolio={portfolio} />);
 
     expect(await screen.findByText('Not enough history yet.')).toBeTruthy();
-    expect(screen.getByText('⚠ Need at least two valuation dates')).toBeTruthy();
+    expect(container.querySelector('.gaps')?.textContent).toBe('Data gap Need at least two valuation dates');
   });
 });
