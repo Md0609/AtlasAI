@@ -12,6 +12,7 @@ export default defineConfig({
       'apps/api/test/**/*.test.ts',
       // Web render tests opt into jsdom per file with `// @vitest-environment jsdom`.
       'apps/web/src/**/*.test.tsx',
+      'apps/web/src/**/*.test.ts',
     ],
     testTimeout: 120_000,
     hookTimeout: 120_000,

@@ -43,8 +43,13 @@ describe('Exposure', () => {
     expect(screen.getByText('Technology').closest('tr')!.className).toBe('');
 
     expect(container.textContent).toContain('cash 15.00%');
-    expect(screen.getByText('⚠ Fund XYZ has no holdings breakdown')).toBeTruthy();
-    expect(container.querySelector('.provenance')?.textContent).toContain('engine 1.2.3 · look-through-v1 · inputs abcdef012345…');
+    // Gaps are marked by text ("Data gap"), not by colour alone; the reason is kept verbatim.
+    expect(container.querySelector('.gaps')?.textContent).toBe('Data gap Fund XYZ has no holdings breakdown');
+    expect(container.querySelector('.provenance')?.textContent).toBe(
+      'engine 1.2.3 · look-through-v1 · inputs abcdef012345… · prices as of 10 Nov 2026 · holdings as of —',
+    );
+    expect(container.textContent).toContain('Total value: 1,000.00 EUR');
+    expect(container.textContent).toContain('HHI 0.423 · effective N 2.37 of 2 names');
   });
 
   it('requests the chosen dimension', async () => {

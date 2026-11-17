@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import type { Portfolio } from '../../api';
+import { Button } from '../../components/Button';
+import { ThemeToggle } from '../../components/ThemeToggle';
 import { Exposure } from '../exposure/Exposure';
 import { ImportCsv } from '../import/ImportCsv';
 import { Performance } from '../performance/Performance';
@@ -12,8 +14,9 @@ export function PortfolioView({ portfolio, onBack }: { portfolio: Portfolio; onB
   return (
     <div className="shell">
       <header>
-        <button className="link" onClick={onBack}>← Portfolios</button>
+        <Button variant="link" onClick={onBack}>← Portfolios</Button>
         <h1>{portfolio.name} <span className="muted">{portfolio.base_currency}</span></h1>
+        <ThemeToggle />
       </header>
       <nav className="tabs">
         {(['positions', 'exposure', 'performance', 'import'] as Tab[]).map((t) => (

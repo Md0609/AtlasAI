@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError, type Me, type Portfolio } from '../../api';
+import { Button } from '../../components/Button';
+import { EmptyState } from '../../components/EmptyState';
+import { ThemeToggle } from '../../components/ThemeToggle';
 import { PortfolioView } from './PortfolioView';
 
 export function Home({ me, onLogout }: { me: Me; onLogout: () => void }) {
@@ -33,11 +36,12 @@ export function Home({ me, onLogout }: { me: Me; onLogout: () => void }) {
     <div className="shell">
       <header>
         <h1>Atlas</h1>
-        <div className="muted">{me.email} · {me.jurisdiction} <button className="link" onClick={onLogout}>Log out</button></div>
+        <div className="muted">{me.email} · {me.jurisdiction} <Button variant="link" onClick={onLogout}>Log out</Button></div>
+        <ThemeToggle />
       </header>
       <h2>Portfolios</h2>
       <div className="card">
-        {portfolios.length === 0 && <p className="muted">No portfolios yet.</p>}
+        {portfolios.length === 0 && <EmptyState title="No portfolios yet." />}
         <ul className="plain">
           {portfolios.map((p) => (
             <li key={p.id}>
@@ -49,7 +53,7 @@ export function Home({ me, onLogout }: { me: Me; onLogout: () => void }) {
         </ul>
         <div className="inline">
           <input placeholder="New portfolio name" value={name} onChange={(e) => setName(e.target.value)} />
-          <button onClick={create}>Create</button>
+          <Button onClick={create}>Create</Button>
         </div>
         {error && <div className="error">{error}</div>}
       </div>

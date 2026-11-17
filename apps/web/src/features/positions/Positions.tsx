@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api, type Portfolio, type PositionRow } from '../../api';
-import { num } from '../../components/format';
+import { Button } from '../../components/Button';
+import { EmptyState } from '../../components/EmptyState';
+import { formatMoney, formatNumber } from '../../components/format';
 
 export function Positions({ portfolio }: { portfolio: Portfolio }) {
   const [rows, setRows] = useState<PositionRow[]>([]);
@@ -34,7 +36,7 @@ export function Positions({ portfolio }: { portfolio: Portfolio }) {
     <div className="card">
       <h3>Positions</h3>
       {rows.length === 0 ? (
-        <p className="muted">No positions. Import a CSV or add transactions.</p>
+        <EmptyState title="No positions. Import a CSV or add transactions." />
       ) : (
         <table>
           <thead><tr><th>Security</th><th>Qty</th><th>Avg cost</th></tr></thead>
@@ -42,22 +44,22 @@ export function Positions({ portfolio }: { portfolio: Portfolio }) {
             {rows.map((r) => (
               <tr key={r.security_id}>
                 <td>{r.name} <span className="muted">{r.pricing_currency}</span></td>
-                <td>{num(r.quantity, 4)}</td>
-                <td>{r.avg_cost ? `${num(r.avg_cost)} ${r.cost_currency}` : '—'}</td>
+                <td>{formatNumber(r.quantity, 4)}</td>
+                <td>{formatMoney(r.avg_cost, r.cost_currency)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
       <h3>Cash</h3>
-      {cash.length === 0 ? <p className="muted">No cash recorded.</p> : (
+      {cash.length === 0 ? <EmptyState title="No cash recorded." /> : (
         <ul className="plain">
-          {cash.map((c) => <li key={c.currency}>{num(c.amount)} {c.currency}</li>)}
+          {cash.map((c) => <li key={c.currency} className="tnum">{formatMoney(c.amount, c.currency)}</li>)}
         </ul>
       )}
       <div className="inline">
         <input value={amount} onChange={(e) => setAmount(e.target.value)} />
-        <button onClick={deposit}>Deposit {portfolio.base_currency}</button>
+        <Button onClick={deposit}>Deposit {portfolio.base_currency}</Button>
       </div>
     </div>
   );

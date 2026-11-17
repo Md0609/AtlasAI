@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { api, type PerformanceResponse, type Portfolio } from '../../api';
-import { pct } from '../../components/format';
+import { Badge } from '../../components/Badge';
+import { EmptyState } from '../../components/EmptyState';
+import { Spinner } from '../../components/Spinner';
+import { formatDate, formatPct } from '../../components/format';
 
 export function Performance({ portfolio }: { portfolio: Portfolio }) {
   const [resp, setResp] = useState<PerformanceResponse | null>(null);
@@ -11,25 +14,25 @@ export function Performance({ portfolio }: { portfolio: Portfolio }) {
       .catch(() => setResp(null));
   }, [portfolio.id]);
 
-  if (!resp) return <div className="card muted">Loading…</div>;
+  if (!resp) return <div className="card"><Spinner /></div>;
   if (!resp.data) {
     return (
       <div className="card">
-        <p className="muted">Not enough history yet.</p>
-        {resp.gaps.map((g, i) => <div key={i} className="gaps">⚠ {g.reason}</div>)}
+        <EmptyState title="Not enough history yet." />
+        {resp.gaps.map((g, i) => <div key={i} className="gaps"><Badge tone="warning">Data gap</Badge> {g.reason}</div>)}
       </div>
     );
   }
   const d = resp.data;
   return (
     <div className="card">
-      <p className="muted">Window {d.window?.from} → {d.window?.to}</p>
+      <p className="muted">Window {formatDate(d.window?.from)} → {formatDate(d.window?.to)}</p>
       <table>
         <tbody>
-          <tr><td>Time-weighted return (TWR)</td><td>{pct(d.twr, 3)}</td></tr>
-          <tr><td>Money-weighted return (MWR / XIRR)</td><td>{pct(d.mwr, 3)}</td></tr>
-          <tr><td>Max drawdown</td><td>{pct(d.max_drawdown)}</td></tr>
-          <tr><td>Current drawdown</td><td>{pct(d.current_drawdown)}</td></tr>
+          <tr><td>Time-weighted return (TWR)</td><td>{formatPct(d.twr, 3)}</td></tr>
+          <tr><td>Money-weighted return (MWR / XIRR)</td><td>{formatPct(d.mwr, 3)}</td></tr>
+          <tr><td>Max drawdown</td><td>{formatPct(d.max_drawdown)}</td></tr>
+          <tr><td>Current drawdown</td><td>{formatPct(d.current_drawdown)}</td></tr>
         </tbody>
       </table>
       <h4>Local vs FX return (per pricing currency)</h4>
@@ -38,12 +41,12 @@ export function Performance({ portfolio }: { portfolio: Portfolio }) {
         <tbody>
           {(d.currency_decomposition ?? []).map((c) => (
             <tr key={c.currency}>
-              <td>{c.currency}</td><td>{pct(c.localReturn, 3)}</td><td>{pct(c.fxReturn, 3)}</td>
+              <td>{c.currency}</td><td>{formatPct(c.localReturn, 3)}</td><td>{formatPct(c.fxReturn, 3)}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      {resp.gaps.length > 0 && resp.gaps.map((g, i) => <div key={i} className="gaps">⚠ {g.reason}</div>)}
+      {resp.gaps.length > 0 && resp.gaps.map((g, i) => <div key={i} className="gaps"><Badge tone="warning">Data gap</Badge> {g.reason}</div>)}
     </div>
   );
 }

@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { api, ApiError, type Me } from '../../api';
+import { Button } from '../../components/Button';
+import { ThemeToggle } from '../../components/ThemeToggle';
 
 export function Auth({ onAuthed }: { onAuthed: (me: Me) => void }) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -30,7 +32,10 @@ export function Auth({ onAuthed }: { onAuthed: (me: Me) => void }) {
 
   return (
     <div className="shell narrow">
-      <h1>Atlas</h1>
+      <header>
+        <h1>Atlas</h1>
+        <ThemeToggle />
+      </header>
       <p className="muted">Clarity about what you own.</p>
       <div className="card">
         <label>Email<input value={email} onChange={(e) => setEmail(e.target.value)} type="email" /></label>
@@ -52,10 +57,10 @@ export function Auth({ onAuthed }: { onAuthed: (me: Me) => void }) {
           </>
         )}
         {error && <div className="error">{error}</div>}
-        <button onClick={submit}>{mode === 'login' ? 'Log in' : 'Create account'}</button>
-        <button className="link" onClick={() => setMode(mode === 'login' ? 'register' : 'login')}>
+        <Button onClick={submit}>{mode === 'login' ? 'Log in' : 'Create account'}</Button>
+        <Button variant="link" onClick={() => setMode(mode === 'login' ? 'register' : 'login')}>
           {mode === 'login' ? 'Need an account? Register' : 'Have an account? Log in'}
-        </button>
+        </Button>
       </div>
     </div>
   );
