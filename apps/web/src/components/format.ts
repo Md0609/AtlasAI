@@ -155,3 +155,13 @@ export function formatDate(v: Value): string {
   return `${d} ${MONTHS[m - 1]} ${y}`;
 }
 
+
+/**
+ * Whether a decimal string is exactly zero ("0", "-0.000", "0e0" is not a decimal → null). Reads the
+ * digits only — no conversion to Number — so "0.0000000000000000000001" is not zero. Used to tell
+ * a real zero from a value, never to compute one. `null` when the value is missing or malformed.
+ */
+export function isZeroDecimal(v: Value): boolean | null {
+  const p = parse(v);
+  return p ? /^0*$/.test(p.int + p.frac) : null;
+}

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { formatDate, formatFixed, formatMoney, formatNumber, formatPct, MISSING } from './format';
+import { formatDate, formatFixed, formatMoney, formatNumber, formatPct, isZeroDecimal, MISSING } from './format';
 
 describe('formatNumber (quantities: at most dp decimals, trailing zeros dropped)', () => {
   it('formats zero, negatives, grouping and decimals', () => {
@@ -111,5 +111,23 @@ describe('formatDate (calendar day, independent of the viewer time zone)', () =>
     for (const v of [null, undefined, '', 'yesterday', '2026-02-30', '2026-13-01', '02/01/2026']) {
       expect(formatDate(v)).toBe(MISSING);
     }
+  });
+});
+
+describe('isZeroDecimal (real zero vs value vs missing, on the string)', () => {
+  it('recognises zero in any decimal spelling', () => {
+    expect(isZeroDecimal('0')).toBe(true);
+    expect(isZeroDecimal('-0.000')).toBe(true);
+    expect(isZeroDecimal('.0')).toBe(true);
+  });
+  it('does not round tiny values to zero', () => {
+    expect(isZeroDecimal('0.0000000000000000000000000000001')).toBe(false);
+    expect(isZeroDecimal('-0.5')).toBe(false);
+  });
+  it('returns null for missing or malformed values instead of claiming zero', () => {
+    expect(isZeroDecimal(null)).toBeNull();
+    expect(isZeroDecimal(undefined)).toBeNull();
+    expect(isZeroDecimal('')).toBeNull();
+    expect(isZeroDecimal('NaN')).toBeNull();
   });
 });
