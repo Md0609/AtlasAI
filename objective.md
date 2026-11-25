@@ -50,7 +50,7 @@ crudos y tiene que sacar él solo las conclusiones.
 |---|---|---|---|
 | AT-1 | Trocear la web | `apps/web/src/features/{auth,portfolios,summary,positions,exposure,performance,import}/` + `components/`; cero cambio visual; tests de render con Testing Library (dependencia justificada) | ✅ |
 | AT-2 | Sistema visual | Tokens claro/oscuro, `Button`, `Badge`, `EmptyState`, `Spinner`, `Toast`, `ThemeToggle` (ver §4); formateadores únicos de dinero, % y fechas | ✅ |
-| AT-3 | Pestaña **Resumen** | 4 KPI (valor total, rentabilidad del periodo, mayor posición %, % desconocido) + 1–2 frases generadas **de forma determinista** desde la respuesta del motor (sin LLM) | ⬜ |
+| AT-3 | Pestaña **Resumen** | 4 KPI (valor total, rentabilidad del periodo, mayor posición %, % desconocido) + 1–2 frases generadas **de forma determinista** desde la respuesta del motor (sin LLM) | ✅ |
 | AT-4 | Exposición visual | Barras horizontales ordenadas (top 8 + "Otros"); "Desconocido" siempre aparte y con su propio estilo; tabla plegable. "Otros" se suma con aritmética decimal (`@atlas/domain`), nunca con `Number` (ver §6) | ⬜ |
 | AT-5 | Rendimiento visual | Con lo que la API ya devuelve (`PerformanceResponse`): TWR, MWR, drawdown máximo y actual y descomposición local vs divisa en gráfico; TWR y MWR explicados en una línea cada uno. **Sin serie temporal** (la API no la ofrece, ver §5) | ⬜ |
 | AT-6 | Importar CSV en 3 pasos | Subir → mapear (vista previa de 5 filas, columnas detectadas) → confirmar con errores por fila; volver atrás sin perder el mapeo | ⬜ |

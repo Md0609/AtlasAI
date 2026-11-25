@@ -98,7 +98,7 @@ export function ImportCsv({ portfolio, onDone }: { portfolio: Portfolio; onDone:
               ))}
             </ul>
           )}
-          <Button variant="link" onClick={onDone}>View positions →</Button>
+          <Button variant="link" onClick={onDone}>View summary →</Button>
         </div>
       )}
     </div>

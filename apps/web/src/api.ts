@@ -93,6 +93,13 @@ export interface PerformanceResponse {
     current_drawdown?: string | null;
     currency_decomposition?: Array<{ currency: string; localReturn: string | null; fxReturn: string | null }>;
   } | null;
+  /** Present whenever `data` is not null (apps/api/src/signals.ts); absent with `data: null`. */
+  provenance?: {
+    engineVersion: string;
+    inputHash: string;
+    methodology: string;
+    inputs?: { pricesAsOf: string | null; fxAsOf: string | null; holdingsAsOf: string | null };
+  };
   gaps: Array<{ component: string; reason: string }>;
-  staleness: { prices_as_of: string | null };
+  staleness: { prices_as_of: string | null; fx_as_of?: string | null; holdings_as_of?: string | null };
 }

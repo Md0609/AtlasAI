@@ -57,7 +57,7 @@ describe('ImportCsv', () => {
       mapping: { ticker: 'symbol', date: 'date', quantity: 'qty', price: 'price', currency: 'ccy', fee: 'notes' },
       defaults: { type: 'buy' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'View positions →' }));
+    fireEvent.click(screen.getByRole('button', { name: 'View summary →' }));
     expect(onDone).toHaveBeenCalled();
   });
 });
